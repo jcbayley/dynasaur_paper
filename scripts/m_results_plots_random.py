@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.7.9"
+__generated_with = "0.7.12"
 app = marimo.App(width="full")
 
 
@@ -43,7 +43,7 @@ def __():
 
 @app.cell
 def __():
-    root_dir = '/Users/joebayley/projects/massdynamics_project/results/random_noise/test_2mass_fourier32_2d_3det_windowcoeffsstrain_sr32_transformer_3_masstriangle_snr20_rt2/'
+    root_dir = "/Users/joebayley/projects/massdynamics_project/results/random/test_2mass_fourier16_2d_3det_windowcoeffsstrain_sr16_transformer_5_masstriangle"
     return root_dir,
 
 
@@ -293,7 +293,7 @@ def __(data_index, np, rmse):
 @app.cell
 def __(np, plt, rmse):
     (fig_rmse, rmse_ax) = plt.subplots(nrows=2, figsize=(7, 13), gridspec_kw={'height_ratios': [4, 1]})
-    (pmin, pmax) = (-1.6, 0.5)
+    (pmin, pmax) = (-3, 0.2)
     rmse_vp = rmse_ax[0].boxplot(np.log10(np.mean(rmse[:, :, :], axis=-1).T), patch_artist=True, notch=True, vert=False, widths=0.8, boxprops=dict(facecolor='C0', color='C0'), medianprops=dict(color='red'), whiskerprops=dict(color='C0'), capprops=dict(color='C0'))
     for flier in rmse_vp['fliers']:
         flier.set(marker='.', ms=1, color='#e7298a', alpha=0.5)
@@ -309,7 +309,7 @@ def __(np, plt, rmse):
     rmse_ax[0].tick_params(axis='both', labelsize=12)
     rmse_ax[1].tick_params(axis='both', labelsize=12)
     plt.subplots_adjust(hspace=0)
-    plt.show()
+    fig_rmse
     return det, fig_rmse, flier, pmax, pmin, rmse_ax, rmse_vp
 
 
@@ -467,7 +467,7 @@ def __(
     motion_ax_ld.set_position([pos3.x0, pos3.y0, pos3.width, pos3.height])
     motion_axs[0].set_position([pos10.x0, pos10.y0 - 0.05, pos10.width, pos10.height])
     motion_axs[1].set_position([pos11.x0, pos11.y0 - 0.05, pos11.width, pos11.height])
-    plt.show()
+    motion_fig
     return (
         ar_scale,
         arrow,
