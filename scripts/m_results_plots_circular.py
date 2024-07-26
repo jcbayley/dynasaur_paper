@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.7.9"
+__generated_with = "0.7.12"
 app = marimo.App(width="full")
 
 
@@ -43,7 +43,7 @@ def __():
 
 @app.cell
 def __():
-    root_dir = '/Users/joebayley/projects/massdynamics_project/results/random_noise/test_2mass_fourier32_2d_3det_windowcoeffsstrain_sr32_transformer_3_masstriangle_snr20_rt2/'
+    root_dir = "/Users/joebayley/projects/massdynamics_project/results/circular/test_2mass_timeseries32_2d_3det_nowindow_sr32_period1_2_transformer_1_masstriangle_unhanded"
     return root_dir,
 
 
@@ -69,7 +69,7 @@ def __(config, create_model):
 @app.cell
 def __(os, root_dir):
     data_dir = os.path.join(root_dir, 'testout_2', 'data_output')
-    data_index = 35
+    data_index = 2
     return data_dir, data_index
 
 
@@ -232,43 +232,68 @@ def __(data_index, np, rmse_angles):
 
 
 @app.cell
-def __(GridSpec, data_index, diff_angles, diff_radii, np, plt):
-    fig_ra_rmse = plt.figure()
-    gs_ra_rmse = GridSpec(2, 2, hspace=0.5)
-    ra_rmse_fontsize = 20
-    ra_ax1 = fig_ra_rmse.add_subplot(gs_ra_rmse[0, 0])
-    ra_ax2 = fig_ra_rmse.add_subplot(gs_ra_rmse[1, 0])
-    ra_ax3 = fig_ra_rmse.add_subplot(gs_ra_rmse[0, 1])
-    ra_ax4 = fig_ra_rmse.add_subplot(gs_ra_rmse[1, 1])
-    ra_ax1.hist(np.ravel(diff_radii[data_index, :, 0]), bins=100, density=True, alpha=0.8)
-    ra_ax1.axvline(0, color='C3')
-    ra_ax2.hist(np.ravel(diff_radii[data_index, :, 1]), bins=100, density=True, alpha=0.8)
-    ra_ax2.axvline(0, color='C3')
-    ra_ax1.set_xlabel('Radius difference')
-    ra_ax2.set_xlabel('Radius difference')
-    ra_ax1.set_xlim([-0.13, 0.2])
-    ra_ax2.set_xlim([-0.13, 0.2])
-    ra_ax3.hist(np.ravel(diff_angles[data_index, :, 0]), bins=100, density=True, alpha=0.8)
-    ra_ax3.axvline(0, color='C3')
-    ra_ax4.hist(np.ravel(diff_angles[data_index, :, 1]), bins=100, density=True, alpha=0.8)
-    ra_ax4.axvline(0, color='C3')
-    ra_ax3.set_xlabel('Angle difference [Radians]')
-    ra_ax4.set_xlabel('Angle difference [Radians]')
-    ra_ax1.set_yticklabels([])
-    ra_ax2.set_yticklabels([])
-    ra_ax4.set_yticklabels([])
-    ra_ax3.set_yticklabels([])
-    ra_ax1.set_ylabel('Mass 1')
-    ra_ax2.set_ylabel('Mass 2')
-    plt.show()
+def __(GridSpec, ba, diff_angles, diff_radii, np, plt):
+    fig_rarmse = plt.figure()
+    gs_rarmse = GridSpec(2, 2, hspace=0.5)
+
+    l_fontsize = 20
+    ax_s1_rarmse = fig_rarmse.add_subplot(gs_rarmse[0, 0])
+    ax_s2_rarmse = fig_rarmse.add_subplot(gs_rarmse[1, 0])
+
+    plot_ind = 0
+    ax_s1_rarmse.hist(np.ravel(diff_radii[plot_ind,:,0]), bins=200, density=True, alpha=0.8)
+    #ax_s1.axvline(np.mean(source_radii[plot_ind,0]), color="r")
+    ax_s1_rarmse.axvline(0, color="C3")
+    #ax[0,0].set_xlim([0.,0.5])
+    ax_s2_rarmse.hist(np.ravel(diff_radii[plot_ind,:,1]), bins=200 , density=True, alpha=0.8)
+    #ax_s2.axvline(np.mean(source_radii[plot_ind,1]), color="r")
+    ax_s2_rarmse.axvline(0, color="C3")
+    #ax[0,1].set_xlim([0.,0.7])
+    ax_s1_rarmse.set_xlabel("Radius difference")
+    ax_s2_rarmse.set_xlabel("Radius difference")
+    ax_s1_rarmse.set_xlim([-0.3,0.1])
+    ax_s2_rarmse.set_xlim([-0.1,0.3])
+
+
+    diff_angles[diff_angles < -1] += 2*np.pi 
+    bax1 = ba.BrokenAxes(xlims=((-0.03, 0.05), (3.1, 3.18)), hspace=0.1, subplot_spec=gs_rarmse[0,1])
+    bax1.hist(np.ravel(diff_angles[plot_ind,:,0] ), bins=800 , density=True, alpha=0.8)
+    #ax[0].axvline(np.mean(source_angles[plot_ind,0]), color="r")
+    bax1.axvline(0, color="C3")
+    #ax[0].set_xlim([0.,0.5])
+    bax2 = ba.BrokenAxes(xlims=((-0.03, 0.05), (3.1, 3.18)), hspace=0.1, subplot_spec=gs_rarmse[1,1])
+    bax2.hist(np.ravel(diff_angles[plot_ind,:,1] ), bins=800 , density=True, alpha=0.8)
+    #ax[1].axvline(np.mean(source_angles[plot_ind,1]), color="r")
+    bax2.axvline(0, color="C3")#
+    #ax[1,1].set_xlim([-0.05,0.05])
+    bax1.set_xlabel("Angle difference [radians]", labelpad=30.5)
+    bax2.set_xlabel("Angle difference [radians]", labelpad=30)
+    bax1.tick_params(axis='x', labelrotation=45)
+    bax2.tick_params(axis='x', labelrotation=45)
+    bax1.set_yticklabels([])
+    bax2.set_yticklabels([])
+    ax_s2_rarmse.set_yticklabels([])
+    ax_s1_rarmse.set_yticklabels([])
+    ax_s1_rarmse.set_ylabel("Mass 1")
+    ax_s2_rarmse.set_ylabel("Mass 2")
+    #ax_s1.spines[['right', 'top']].set_visible(False)
+    bax1.spines['top'][0].set_visible(True)
+    bax1.spines['top'][1].set_visible(True)
+    bax1.spines['right'][0].set_visible(True)
+    bax2.spines['top'][0].set_visible(True)
+    bax2.spines['top'][1].set_visible(True)
+    bax2.spines['right'][0].set_visible(True)
+    #fig.savefig("../paper/circular_radius_anglediff.pdf", bbox_inches="tight")
+    fig_rarmse
     return (
-        fig_ra_rmse,
-        gs_ra_rmse,
-        ra_ax1,
-        ra_ax2,
-        ra_ax3,
-        ra_ax4,
-        ra_rmse_fontsize,
+        ax_s1_rarmse,
+        ax_s2_rarmse,
+        bax1,
+        bax2,
+        fig_rarmse,
+        gs_rarmse,
+        l_fontsize,
+        plot_ind,
     )
 
 
@@ -293,7 +318,7 @@ def __(data_index, np, rmse):
 @app.cell
 def __(np, plt, rmse):
     (fig_rmse, rmse_ax) = plt.subplots(nrows=2, figsize=(7, 13), gridspec_kw={'height_ratios': [4, 1]})
-    (pmin, pmax) = (-1.6, 0.5)
+    (pmin, pmax) = (-3, 0.5)
     rmse_vp = rmse_ax[0].boxplot(np.log10(np.mean(rmse[:, :, :], axis=-1).T), patch_artist=True, notch=True, vert=False, widths=0.8, boxprops=dict(facecolor='C0', color='C0'), medianprops=dict(color='red'), whiskerprops=dict(color='C0'), capprops=dict(color='C0'))
     for flier in rmse_vp['fliers']:
         flier.set(marker='.', ms=1, color='#e7298a', alpha=0.5)
@@ -309,7 +334,7 @@ def __(np, plt, rmse):
     rmse_ax[0].tick_params(axis='both', labelsize=12)
     rmse_ax[1].tick_params(axis='both', labelsize=12)
     plt.subplots_adjust(hspace=0)
-    plt.show()
+    fig_rmse
     return det, fig_rmse, flier, pmax, pmin, rmse_ax, rmse_vp
 
 
@@ -334,7 +359,7 @@ def __(
     motion_detector = 0
     motion_fontsize = 20
     (_tstart, _tend) = (1, -1)
-    axlim = 0.5
+    axlim = 0.2
     #########
     # setup the grid
     #############
@@ -449,7 +474,7 @@ def __(
         figtr = motion_fig.transFigure.inverted()
         print(_tstep_time)
         ptB = figtr.transform(motion_ax_ld.transData.transform((_tstep_time * 1.0 - 0.0, -0.005)))
-        ptE = figtr.transform(motion_axa[_i].transData.transform((0.0, 0.5)))
+        ptE = figtr.transform(motion_axa[_i].transData.transform((0.0, axlim)))
         arrow = matplotlib.patches.FancyArrowPatch(ptB, ptE, transform=motion_fig.transFigure, fc='r', arrowstyle='simple', alpha=0.5, mutation_scale=20.0)
         motion_fig.patches.append(arrow)
 
@@ -467,7 +492,7 @@ def __(
     motion_ax_ld.set_position([pos3.x0, pos3.y0, pos3.width, pos3.height])
     motion_axs[0].set_position([pos10.x0, pos10.y0 - 0.05, pos10.width, pos10.height])
     motion_axs[1].set_position([pos11.x0, pos11.y0 - 0.05, pos11.width, pos11.height])
-    plt.show()
+    motion_fig
     return (
         ar_scale,
         arrow,
