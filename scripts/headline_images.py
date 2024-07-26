@@ -270,6 +270,66 @@ def __(
 
 
 @app.cell
+def __():
+    #fig_co.savefig("./figures/kde_strain_output.pdf")
+    return
+
+
+@app.cell
+def __(
+    data,
+    eval_kde_m1,
+    eval_kde_m2,
+    matplotlib,
+    plt,
+    sc1,
+    sc2,
+    time_index,
+    xvals,
+    yvals,
+):
+    fig_con = plt.figure(figsize=(10, 10))
+    ax_con = fig_con.add_subplot(111)
+
+    contour1n = ax_con.contourf(xvals, yvals, eval_kde_m1.reshape(len(xvals), len(yvals)), levels=4, cmap='Blues', label="Mass 1", zorder=0, alpha=0.5)
+    contour2n = ax_con.contourf(xvals, yvals, eval_kde_m2.reshape(len(xvals), len(yvals)), levels=4, cmap='Reds', label="Mass 1", zorder=0, alpha=0.5)
+
+    ax_con.autoscale(False) # To avoid that the scatter changes limits
+
+    sc1n = ax_con.scatter(data["source_timeseries"][0,0,time_index], data["source_timeseries"][0,1,time_index], color="k", label="True mass 1", marker="o", s=60,zorder=1)
+
+    sc2n = ax_con.scatter(data["source_timeseries"][1,0,time_index], data["source_timeseries"][1,1,time_index], color="k", label="True mass 2", marker="*", s=60, zorder=1)
+
+    ax_con.set_xlabel("X position")
+    ax_con.set_ylabel("Y position")
+
+    legend_elementsn = [matplotlib.lines.Line2D([0], [0], color=color, lw=2, label=f'Mass {mind+1}') for mind, color in enumerate(["C3", "C0"])]
+    legend_elementsn += [sc1, sc2]
+
+    ax_con.set_aspect('equal', 'box')
+
+    ax_con.legend(handles=legend_elementsn,  loc='upper left')
+
+    #ax_co.legend()
+    fig_con
+    return (
+        ax_con,
+        contour1n,
+        contour2n,
+        fig_con,
+        legend_elementsn,
+        sc1n,
+        sc2n,
+    )
+
+
+@app.cell
+def __(fig_con):
+    fig_con.savefig("./figures/heatmap_output.pdf")
+    return
+
+
+@app.cell
 def __(data, plt, time_index):
     fig_v, ax_v = plt.subplots()
     n_v_samples = 20
@@ -323,6 +383,12 @@ def __(data, plt, time_index):
 
     fig_v
     return ar_scale, ax_v, fig_v, head_width, n_v_samples, sc1_v, sc2_v
+
+
+@app.cell
+def __():
+    #fig_v.savefig("./figures/samples_output.pdf")
+    return
 
 
 @app.cell

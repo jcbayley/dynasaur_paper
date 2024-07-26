@@ -445,8 +445,8 @@ def __(
     # Plot the motion at a single point in time
     ################
     motion_tsteps = np.array(np.array([0.15, 0.4, 0.6]) * np.shape(recon_timeseries)[-1]).astype(int)
-    nsamples = 30
-    ar_scale = 2
+    nsamples = 20
+    ar_scale = 0.5
     for _i in range(3):
         _tstep_time = motion_tsteps[_i] / len(source_strain[data_index][motion_detector])
         motion_ax_l.axvline(_tstep_time, color='r', lw=2)
@@ -482,7 +482,7 @@ def __(
     ############
     # Define plotting parameters
     ##########
-    motion_axa[0].legend()
+    motion_axa[1].legend(bbox_to_anchor=(0.78,0.05), fancybox=True, ncol=4, bbox_transform=motion_fig.transFigure)
     motion_fig.tight_layout()
     pos10 = motion_axs[0].get_position()
     pos11 = motion_axs[1].get_position()

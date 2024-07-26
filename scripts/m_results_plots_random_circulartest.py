@@ -17,6 +17,7 @@ def __():
     import massdynamics
     import json
     from massdynamics import create_model
+    from massdynamics.data_generation import data_generation, data_processing, compute_waveform
     from scipy.interpolate import interp1d
     import brokenaxes as ba
     import corner
@@ -25,8 +26,11 @@ def __():
     return (
         GridSpec,
         ba,
+        compute_waveform,
         corner,
         create_model,
+        data_generation,
+        data_processing,
         h5py,
         interp1d,
         json,
@@ -61,93 +65,272 @@ def __(os, root_dir, torch):
 
 
 @app.cell
-def __(config, create_model):
-    (model, pre_model) = create_model.create_models(config, device='cpu')
+def __(config, np):
+    config["prior_args"].setdefault("sky_position", (np.pi, np.pi/2))
+    return
+
+
+@app.cell
+def __(config, create_model, root_dir):
+    config["root_dir"] = root_dir
+    pre_model, model, _ = create_model.load_models(config, device="cpu")
     return model, pre_model
 
 
 @app.cell
-def __(os, root_dir):
-    data_dir = os.path.join(root_dir, 'testout_2', 'data_output')
-    data_index = 35
-    return data_dir, data_index
+def __(config, data_generation, np):
+    prior_args = {
+            "cycles_min": 5.,
+            "cycles_max": 5.,
+            "mass_min": 10,
+            "mass_max": 10,
+            "handed_orbit": True,
+            "sky_position": [np.pi, np.pi/2]
+        }
+
+    data_arr = data_generation.generate_data(
+            n_data=1, 
+            basis_order=config["basis_order"], 
+            n_masses=config["n_masses"], 
+            sample_rate=config["sample_rate"], 
+            n_dimensions=3, 
+            detectors=config["detectors"], 
+            window=config["window"], 
+            window_acceleration="none", 
+            basis_type=config["basis_type"],
+            data_type = "circular",
+            fourier_weight=0.0,
+            coordinate_type="cartesian",
+            noise_variance = False,
+            prior_args=prior_args)
+
+    data = {
+        "times": data_arr[0],
+        "basis_dynamics": data_arr[1],
+        "source_masses": data_arr[2],
+        "strain_timeseries": data_arr[3],
+        "feature_shape": data_arr[4],
+        "all_dynamics": data_arr[5],
+        "all_basis_dynamics": data_arr[6],
+    }
+    return data, data_arr, prior_args
 
 
 @app.cell
-def __(data_dir, h5py, interp1d, np, os):
-    data_files = os.listdir(data_dir)
-    r_recon_strain = []
-    r_source_strain = []
-    r_recon_timeseries = []
-    r_source_timeseries = []
-    recon_masses = []
-    source_masses = []
-    for k, fname in enumerate(data_files[:50]):
-        fpath = os.path.join(data_dir, fname)
-        with h5py.File(fpath, 'r') as _f:
-            if k == 0:
-                print(_f.keys())
-            r_recon_strain.append(np.array(_f['recon_strain']))
-            r_source_strain.append(np.array(_f['source_strain']))
-            r_recon_timeseries.append(np.array(_f['recon_timeseries']))
-            r_source_timeseries.append(np.array(_f['source_timeseries']))
-            recon_masses.append(np.array(_f['recon_masses']))
-            source_masses.append(np.array(_f['source_masses']))
+def __(config, data, data_processing, pre_model):
+    _, _, processed_strain = data_processing.preprocess_data(
+                pre_model, 
+                data["basis_dynamics"],
+                data["source_masses"], 
+                data["strain_timeseries"], 
+                window_strain=config["window_strain"], 
+                spherical_coords=config["spherical_coords"], 
+                initial_run=False,
+                n_masses=config["n_masses"],
+                device=config["device"],
+                basis_type=config["basis_type"],
+                n_dimensions=3)
+    return processed_strain,
 
 
-    r_recon_strain = np.array(r_recon_strain)
-    r_source_strain = np.array(r_source_strain)
-    r_recon_timeseries = np.array(r_recon_timeseries)
-    r_source_timeseries = np.array(r_source_timeseries)
-    recon_masses = np.array(recon_masses)
-    source_masses = np.array(source_masses)
-    r_recon_velocities = np.gradient(r_recon_timeseries, axis=-1)
-    r_source_velocities = np.gradient(r_source_timeseries, axis=-1)
+@app.cell
+def __(data, np):
+    upsample_rate = 128
+    interp_times = np.linspace(np.min(data["times"]),np.max(data["times"]), upsample_rate)
+    return interp_times, upsample_rate
 
-    _times = np.linspace(0, 1, np.shape(r_source_strain)[-1])
-    interp_times = np.linspace(0, 1, 128)
-    strain_fn = interp1d(_times, r_source_strain, kind='cubic')
-    source_strain = strain_fn(interp_times)
-    dyn_fn = interp1d(_times, r_source_timeseries, kind='cubic')
-    source_timeseries = dyn_fn(interp_times)
-    vel_fn = interp1d(_times, r_source_velocities, kind='cubic')
-    source_velocities = vel_fn(interp_times)
-    strain_fn = interp1d(_times, r_recon_strain, kind='cubic')
-    recon_strain = strain_fn(interp_times)
-    dyn_fn = interp1d(_times, r_recon_timeseries, kind='cubic')
-    recon_timeseries = dyn_fn(interp_times)
-    vel_fn = interp1d(_times, r_recon_velocities, kind='cubic')
-    recon_velocities = vel_fn(interp_times)
+
+@app.cell
+def __(data, np, processed_strain):
+    basis_dynamics = data["basis_dynamics"][0]/np.max(np.abs(data["basis_dynamics"][0]))
+    source_masses = data["source_masses"][0]/np.sum(data["source_masses"][0])
+    strain_timeseries = processed_strain[0]*np.hanning(np.shape(processed_strain)[-1])
+    return basis_dynamics, source_masses, strain_timeseries
+
+
+@app.cell
+def __(
+    basis_dynamics,
+    compute_waveform,
+    config,
+    data,
+    data_processing,
+    interp1d,
+    interp_times,
+    pre_model,
+    source_masses,
+):
+    t_source_tseries = compute_waveform.get_time_dynamics(
+            basis_dynamics, 
+            data["times"], 
+            basis_type=config["basis_type"]
+            )
+
+    t_source_strain, source_energy = compute_waveform.get_waveform(
+        data["times"], 
+        source_masses, 
+        basis_dynamics, 
+        config["detectors"], 
+        basis_type=config["basis_type"],
+        compute_energy=True)
+
+    t2_source_strain, _ = data_processing.normalise_data(t_source_strain, pre_model.norm_factor)
+    t3_source_strain = data_processing.get_window_strain(t2_source_strain, window_type=config["window_strain"])
+
+    s_strain_fn = interp1d(data["times"], t3_source_strain, kind="cubic")
+    source_strain = s_strain_fn(interp_times)
+    s_dyn_fn = interp1d(data["times"], t_source_tseries, kind="cubic")
+    source_tseries = s_dyn_fn(interp_times)
+
+    t_data_strain, _ = compute_waveform.get_waveform(
+        data["times"], 
+        source_masses, 
+        basis_dynamics, 
+        config["detectors"], 
+        basis_type=config["basis_type"],
+        compute_energy=True)
+
+    t2_data_strain, _ = data_processing.normalise_data(t_data_strain, pre_model.norm_factor)
+    data_strain = data_processing.get_window_strain(t2_data_strain, window_type=config["window_strain"])
+
     return (
-        data_files,
-        dyn_fn,
-        fname,
-        fpath,
-        interp_times,
-        k,
-        r_recon_strain,
-        r_recon_timeseries,
-        r_recon_velocities,
-        r_source_strain,
-        r_source_timeseries,
-        r_source_velocities,
-        recon_masses,
-        recon_strain,
-        recon_timeseries,
-        recon_velocities,
-        source_masses,
+        data_strain,
+        s_dyn_fn,
+        s_strain_fn,
+        source_energy,
         source_strain,
-        source_timeseries,
-        source_velocities,
-        strain_fn,
-        vel_fn,
+        source_tseries,
+        t2_data_strain,
+        t2_source_strain,
+        t3_source_strain,
+        t_data_strain,
+        t_source_strain,
+        t_source_tseries,
     )
 
 
 @app.cell
-def __(source_masses):
-    source_masses.shape
-    return
+def __(data_strain, model, np, pre_model, torch):
+    n_flow_samples = 800
+    n_animate_samples = 100
+    input_data = pre_model(torch.from_numpy(np.array([data_strain])).to(torch.float32))
+    multi_coeffmass_samples = model(input_data).sample((n_flow_samples, )).cpu().squeeze(1)
+    return (
+        input_data,
+        multi_coeffmass_samples,
+        n_animate_samples,
+        n_flow_samples,
+    )
+
+
+@app.cell
+def __(
+    config,
+    data_processing,
+    multi_coeffmass_samples,
+    pre_model,
+    strain_timeseries,
+):
+    _, multi_mass_samples, multi_coeff_samples, _ = data_processing.unpreprocess_data(
+                pre_model, 
+                multi_coeffmass_samples,
+                strain_timeseries, 
+                window_strain=config["window_strain"], 
+                spherical_coords=config["spherical_coords"], 
+                initial_run=False,
+                n_masses=config["n_masses"],
+                device=config["device"],
+                basis_type=config["basis_type"],
+                basis_order=config["basis_order"],
+                n_dimensions=config["n_dimensions"])
+    return multi_coeff_samples, multi_mass_samples
+
+
+@app.cell
+def __(
+    compute_waveform,
+    config,
+    data,
+    data_processing,
+    interp1d,
+    interp_times,
+    multi_coeff_samples,
+    multi_mass_samples,
+    n_flow_samples,
+    np,
+    pre_model,
+    source_tseries,
+):
+    n_masses = 2 
+    n_dimensions = 3
+    m_recon_tseries, m_recon_masses = np.zeros((n_flow_samples, n_masses, n_dimensions, len(interp_times))), np.zeros((n_flow_samples, n_masses))
+    m_recon_strain = np.zeros((n_flow_samples, 3, len(interp_times)))
+
+    for i_f in range(n_flow_samples):
+        t_co = multi_coeff_samples[i_f]
+        t_mass = multi_mass_samples[i_f]
+        t_time = compute_waveform.get_time_dynamics(
+            multi_coeff_samples[i_f],
+            data["times"],  
+            basis_type=config["basis_type"])
+
+
+        temp_recon_strain, temp_recon_energy, temp_m_recon_coeffs = data_processing.get_strain_from_samples(
+            data["times"], 
+            t_mass,
+            np.array(t_co), 
+            detectors=["H1","L1","V1"],
+            window_acceleration=config["window_acceleration"], 
+            window=config["window"], 
+            basis_type=config["basis_type"],
+            basis_order=config["basis_order"])
+
+        temp_recon_strain, _ = data_processing.normalise_data(temp_recon_strain, pre_model.norm_factor)
+
+
+        #print(np.shape(data["times"]), np.shape(temp_recon_strain))
+        strain_fn = interp1d(data["times"], temp_recon_strain, kind="cubic")
+        recon_strain_interp = strain_fn(interp_times)
+        dyn_fn = interp1d(data["times"], t_time, kind="cubic")
+        recon_dyn_interp = dyn_fn(interp_times)
+
+        m_recon_tseries[i_f] = recon_dyn_interp
+        m_recon_masses[i_f] = t_mass
+        m_recon_strain[i_f] = recon_strain_interp
+
+    recon_masses = m_recon_masses
+    recon_timeseries = m_recon_tseries
+    recon_strain = m_recon_strain
+    #source_masses = source_masses
+    source_timeseries = source_tseries
+    #source_strain = source_strain
+    recon_velocities = np.gradient(recon_timeseries, axis=-1)
+    source_velocities = np.gradient(source_timeseries, axis=-1)
+
+    return (
+        dyn_fn,
+        i_f,
+        m_recon_masses,
+        m_recon_strain,
+        m_recon_tseries,
+        n_dimensions,
+        n_masses,
+        recon_dyn_interp,
+        recon_masses,
+        recon_strain,
+        recon_strain_interp,
+        recon_timeseries,
+        recon_velocities,
+        source_timeseries,
+        source_velocities,
+        strain_fn,
+        t_co,
+        t_mass,
+        t_time,
+        temp_m_recon_coeffs,
+        temp_recon_energy,
+        temp_recon_strain,
+    )
 
 
 @app.cell
@@ -173,14 +356,14 @@ def __(np):
         return (radii, angles)
 
     def compute_xy_rmse(recon_timeseries, source_timeseries):
-        difference = np.array(recon_timeseries) - np.array(source_timeseries)[:, np.newaxis, :, :]
+        difference = np.array(recon_timeseries) - np.array(source_timeseries)
         max_source_strain = np.max(np.abs(source_timeseries), axis=2)[:, np.newaxis, :, np.newaxis]
         rmse = np.sqrt((difference / max_source_strain) ** 2)
         median_rmse = np.nanmedian(rmse, axis=-1)
         return median_rmse
 
     def compute_strain_rmse(recon_strain, source_strain):
-        difference = np.array(recon_strain) - np.array(source_strain)[:, np.newaxis, :, :]
+        difference = np.array(recon_strain) - np.array(source_strain)
         max_source_strain = np.max(np.abs(source_strain), axis=2)[:, np.newaxis, :, np.newaxis]
         rmse = np.sqrt((difference / max_source_strain) ** 2)
         median_rmse = np.nanmedian(rmse, axis=-1)
@@ -197,22 +380,29 @@ def __(cartesian_to_polar, recon_timeseries, source_timeseries):
 
 @app.cell
 def __(np, recon_angles, recon_radii, source_angles, source_radii):
-    diff_radii = recon_radii - source_radii[:, np.newaxis]
-    diff_angles = np.mod(recon_angles - source_angles[:, np.newaxis] + np.pi, 2*np.pi) - np.pi
+    diff_radii = recon_radii - source_radii[np.newaxis, ]
+    diff_angles = np.mod(recon_angles - source_angles[np.newaxis, :] + np.pi, 2*np.pi) - np.pi
     return diff_angles, diff_radii
 
 
 @app.cell
 def __(
     compute_xy_rmse,
+    np,
     recon_angles,
     recon_radii,
     source_angles,
     source_radii,
 ):
-    rmse_radii = compute_xy_rmse(recon_radii, source_radii)
-    rmse_angles = compute_xy_rmse(recon_angles, source_angles)
+    rmse_radii = compute_xy_rmse(recon_radii, source_radii[np.newaxis, ])
+    rmse_angles = compute_xy_rmse(recon_angles, source_angles[np.newaxis,])
     return rmse_angles, rmse_radii
+
+
+@app.cell
+def __():
+    data_index = 0
+    return data_index,
 
 
 @app.cell
@@ -246,8 +436,8 @@ def __(GridSpec, data_index, diff_angles, diff_radii, np, plt):
     ra_ax2.axvline(0, color='C3')
     ra_ax1.set_xlabel('Radius difference')
     ra_ax2.set_xlabel('Radius difference')
-    ra_ax1.set_xlim([-0.13, 0.2])
-    ra_ax2.set_xlim([-0.13, 0.2])
+    #ra_ax1.set_xlim([-0.13, 0.2])
+    #ra_ax2.set_xlim([-0.13, 0.2])
     ra_ax3.hist(np.ravel(diff_angles[data_index, :, 0]), bins=100, density=True, alpha=0.8)
     ra_ax3.axvline(0, color='C3')
     ra_ax4.hist(np.ravel(diff_angles[data_index, :, 1]), bins=100, density=True, alpha=0.8)
@@ -273,8 +463,8 @@ def __(GridSpec, data_index, diff_angles, diff_radii, np, plt):
 
 
 @app.cell
-def __(compute_strain_rmse, recon_strain, source_strain):
-    rmse = compute_strain_rmse(recon_strain, source_strain)
+def __(compute_strain_rmse, np, recon_strain, source_strain):
+    rmse = compute_strain_rmse(recon_strain, source_strain[np.newaxis, ])
     return rmse,
 
 
@@ -293,7 +483,7 @@ def __(data_index, np, rmse):
 @app.cell
 def __(np, plt, rmse):
     (fig_rmse, rmse_ax) = plt.subplots(nrows=2, figsize=(7, 13), gridspec_kw={'height_ratios': [4, 1]})
-    (pmin, pmax) = (-3, 0.2)
+    (pmin, pmax) = (-1.5, -0.2)
     rmse_vp = rmse_ax[0].boxplot(np.log10(np.mean(rmse[:, :, :], axis=-1).T), patch_artist=True, notch=True, vert=False, widths=0.8, boxprops=dict(facecolor='C0', color='C0'), medianprops=dict(color='red'), whiskerprops=dict(color='C0'), capprops=dict(color='C0'))
     for flier in rmse_vp['fliers']:
         flier.set(marker='.', ms=1, color='#e7298a', alpha=0.5)
@@ -314,9 +504,14 @@ def __(np, plt, rmse):
 
 
 @app.cell
+def __(source_strain):
+    source_strain.shape
+    return
+
+
+@app.cell
 def __(
     GridSpec,
-    data_index,
     matplotlib,
     np,
     plt,
@@ -333,8 +528,9 @@ def __(
     #######
     motion_detector = 0
     motion_fontsize = 20
-    (_tstart, _tend) = (1, -1)
-    axlim = 0.5
+    time = np.linspace(0, 1, len(source_strain[motion_detector]))
+    (_tstart, _tend) = int(0.25*len(time)),int(0.75*len(time))
+    axlim = 0.2
     #########
     # setup the grid
     #############
@@ -377,20 +573,29 @@ def __(
     ############
     # Compute strain quantiles and plot strain
     ##########
-    time = np.linspace(0, 1, len(source_strain[data_index][motion_detector]))
-    motion_ax_l.plot(time, source_strain[data_index][motion_detector], color='k', label='true')
+    motion_ax_l.plot(time, source_strain[motion_detector], color='k', label='true')
 
     # find and plot quantiles
-    motion_qnts = np.quantile(np.array(recon_strain)[data_index, :,motion_detector], [0.1, 0.5, 0.9], axis=0)
+    motion_qnts = np.quantile(np.array(recon_strain)[:,motion_detector], [0.1, 0.5, 0.9], axis=0)
+
+    motion_ax_l.axvspan(time[0], time[_tstart], color='#d3d3d3',  lw=0)
+    motion_ax_l.axvspan(time[_tend], time[-1], color='#d3d3d3',  lw=0)
+    motion_ax_ld.axvspan(time[0], time[_tstart], color='#d3d3d3',  lw=0)
+    motion_ax_ld.axvspan(time[_tend], time[-1], color='#d3d3d3', lw=0)
 
     motion_ax_l.plot(time, motion_qnts[1], color='C2', label='reconstructed 90% confidence')
     motion_ax_l.fill_between(time, motion_qnts[0], motion_qnts[2], alpha=0.5, color='C2')
 
     # residual plot
-    motion_ax_ld.plot(time, motion_qnts[1] - source_strain[data_index][motion_detector], color='C2', label='recovered 90% confidence')
-    motion_ax_ld.fill_between(time, motion_qnts[0] - source_strain[data_index][motion_detector], motion_qnts[2] - source_strain[data_index][motion_detector], alpha=0.5, color='C2')
-    motion_ax_ld.plot(time, source_strain[data_index][motion_detector] - source_strain[data_index][motion_detector], color='k', label='true')
+    motion_ax_ld.plot(time, motion_qnts[1] - source_strain[motion_detector], color='C2', label='recovered 90% confidence')
+    motion_ax_ld.fill_between(time, motion_qnts[0] - source_strain[motion_detector], motion_qnts[2] - source_strain[motion_detector], alpha=0.5, color='C2')
+    motion_ax_ld.plot(time, source_strain[motion_detector] - source_strain[motion_detector], color='k', label='true')
     motion_ax_l.legend()
+
+
+
+    motion_ax_l.set_xlim([time[0], time[-1]])
+    motion_ax_ld.set_xlim([time[0], time[-1]])
 
     ###############
     # Plot the motion at all times
@@ -400,17 +605,17 @@ def __(
 
     motion_tsteps = np.array([88, 699])
     for _i in range(2):
-        motion_tstep_time = motion_tsteps[_i] / len(source_strain[data_index][motion_detector])
+        motion_tstep_time = motion_tsteps[_i] / len(source_strain[motion_detector])
         _width = 3 / 120
 
-        motion_axs[_i].plot(recon_timeseries[data_index, motion_tsteps[_i], 0, 0, _tstart:_tend], recon_timeseries[data_index, motion_tsteps[_i], 0, 1, _tstart:_tend], color='C0', label='recovered (m1)')
-        motion_axs[_i].plot(recon_timeseries[data_index, motion_tsteps[_i], 1, 0, _tstart:_tend], recon_timeseries[data_index, motion_tsteps[_i], 1, 1, _tstart:_tend], color='C1', ls='--', label='recovered (m2)')
-        motion_axs[_i].plot(source_timeseries[data_index, 1, 0, _tstart:_tend], source_timeseries[data_index, 1, 1, _tstart:_tend], color='k', label='true (m2)')
-        motion_axs[_i].plot(source_timeseries[data_index, 0, 0, _tstart:_tend], source_timeseries[data_index, 0, 1, _tstart:_tend], color='k', ls='--', label='true (m1)')
-        motion_axs[_i].scatter(recon_timeseries[data_index, motion_tsteps[_i], 0, 0, -1], recon_timeseries[data_index, motion_tsteps[_i], 0, 1, -1], color='C0', s=20)
-        motion_axs[_i].scatter(recon_timeseries[data_index, motion_tsteps[_i], 1, 0, -1], recon_timeseries[data_index, motion_tsteps[_i], 1, 1, -1], color='C1', s=20)
-        motion_axs[_i].scatter(source_timeseries[data_index, 1, 0, -1], source_timeseries[data_index, 1, 1, -1], color='k', s=20)
-        motion_axs[_i].scatter(source_timeseries[data_index, 0, 0, -1], source_timeseries[data_index, 0, 1, -1], color='k', s=20)
+        motion_axs[_i].plot(recon_timeseries[motion_tsteps[_i], 0, 0, _tstart:_tend], recon_timeseries[motion_tsteps[_i], 0, 1, _tstart:_tend], color='C0', label='recovered (m1)')
+        motion_axs[_i].plot(recon_timeseries[motion_tsteps[_i], 1, 0, _tstart:_tend], recon_timeseries[motion_tsteps[_i], 1, 1, _tstart:_tend], color='C1', ls='--', label='recovered (m2)')
+        motion_axs[_i].plot(source_timeseries[1, 0, _tstart:_tend], source_timeseries[ 1, 1, _tstart:_tend], color='k', label='true (m2)')
+        motion_axs[_i].plot(source_timeseries[0, 0, _tstart:_tend], source_timeseries[0, 1, _tstart:_tend], color='k', ls='--', label='true (m1)')
+        motion_axs[_i].scatter(recon_timeseries[motion_tsteps[_i], 0, 0, -1], recon_timeseries[motion_tsteps[_i], 0, 1, -1], color='C0', s=20)
+        motion_axs[_i].scatter(recon_timeseries[motion_tsteps[_i], 1, 0, -1], recon_timeseries[motion_tsteps[_i], 1, 1, -1], color='C1', s=20)
+        motion_axs[_i].scatter(source_timeseries[1, 0, -1], source_timeseries[1, 1, -1], color='k', s=20)
+        motion_axs[_i].scatter(source_timeseries[0, 0, -1], source_timeseries[0, 1, -1], color='k', s=20)
 
         motion_axs[_i].set_aspect('equal', 'box')
         motion_axs[_i].set_aspect('equal', 'box')
@@ -423,24 +628,27 @@ def __(
     nsamples = 30
     ar_scale = 2
     for _i in range(3):
-        _tstep_time = motion_tsteps[_i] / len(source_strain[data_index][motion_detector])
+        _tstep_time = motion_tsteps[_i] / len(source_strain[motion_detector])
         motion_ax_l.axvline(_tstep_time, color='r', lw=2)
         motion_ax_ld.axvline(_tstep_time, color='r', lw=2)
         _width = 3 / 120
 
+        if motion_tsteps[_i] > _tend or motion_tsteps[_i] < _tstart:
+            motion_axa[_i].set_facecolor("#d3d3d3")
+
         # plot reconstructed sample potition
-        motion_axa[_i].scatter(recon_timeseries[data_index, :nsamples, 0, 0, motion_tsteps[_i]], recon_timeseries[data_index, :nsamples, 0, 1, motion_tsteps[_i]], color='C0', alpha=0.3, s=30, label='recovered (m1)')
-        motion_axa[_i].scatter(recon_timeseries[data_index, :nsamples, 1, 0, motion_tsteps[_i]], recon_timeseries[data_index, :nsamples, 1, 1, motion_tsteps[_i]], color='C1', alpha=0.3, s=30, marker='*', label='recovered (m2)')
+        motion_axa[_i].scatter(recon_timeseries[:nsamples, 0, 0, motion_tsteps[_i]], recon_timeseries[:nsamples, 0, 1, motion_tsteps[_i]], color='C0', alpha=0.3, s=30, label='recovered (m1)')
+        motion_axa[_i].scatter(recon_timeseries[:nsamples, 1, 0, motion_tsteps[_i]], recon_timeseries[:nsamples, 1, 1, motion_tsteps[_i]], color='C1', alpha=0.3, s=30, marker='*', label='recovered (m2)')
         # plot reconstruted sample vector arrows
-        motion_axa[_i].quiver(recon_timeseries[data_index, :nsamples, 0, 0, motion_tsteps[_i]], recon_timeseries[data_index, :nsamples, 0, 1, motion_tsteps[_i]], recon_velocities[data_index, :nsamples, 0, 0, motion_tsteps[_i]], recon_velocities[data_index, :nsamples, 0, 1, motion_tsteps[_i]], color='C0', alpha=0.7, scale=ar_scale, headwidth=5)
-        motion_axa[_i].quiver(recon_timeseries[data_index, :nsamples, 1, 0, motion_tsteps[_i]], recon_timeseries[data_index, :nsamples, 1, 1, motion_tsteps[_i]], recon_velocities[data_index, :nsamples, 1, 0, motion_tsteps[_i]], recon_velocities[data_index, :nsamples, 1, 1, motion_tsteps[_i]], color='C1', alpha=0.7, scale=ar_scale, headwidth=5)
+        motion_axa[_i].quiver(recon_timeseries[:nsamples, 0, 0, motion_tsteps[_i]], recon_timeseries[:nsamples, 0, 1, motion_tsteps[_i]], recon_velocities[:nsamples, 0, 0, motion_tsteps[_i]], recon_velocities[:nsamples, 0, 1, motion_tsteps[_i]], color='C0', alpha=0.7, scale=ar_scale, headwidth=5)
+        motion_axa[_i].quiver(recon_timeseries[:nsamples, 1, 0, motion_tsteps[_i]], recon_timeseries[:nsamples, 1, 1, motion_tsteps[_i]], recon_velocities[:nsamples, 1, 0, motion_tsteps[_i]], recon_velocities[:nsamples, 1, 1, motion_tsteps[_i]], color='C1', alpha=0.7, scale=ar_scale, headwidth=5)
 
         # plot true positions
-        motion_axa[_i].plot(source_timeseries[data_index, 1, 0, motion_tsteps[_i]], source_timeseries[data_index, 1, 1, motion_tsteps[_i]], color='k', marker='*', label='true (m2)')
-        motion_axa[_i].plot(source_timeseries[data_index, 0, 0, motion_tsteps[_i]], source_timeseries[data_index, 0, 1, motion_tsteps[_i]], color='k', marker='o', label='true (m1)')
+        motion_axa[_i].plot(source_timeseries[1, 0, motion_tsteps[_i]], source_timeseries[1, 1, motion_tsteps[_i]], color='k', marker='*', label='true (m2)')
+        motion_axa[_i].plot(source_timeseries[0, 0, motion_tsteps[_i]], source_timeseries[0, 1, motion_tsteps[_i]], color='k', marker='o', label='true (m1)')
         # plot the vector arrows on samples for truth
-        motion_axa[_i].quiver(source_timeseries[data_index, 0, 0, motion_tsteps[_i]], source_timeseries[data_index, 0, 1, motion_tsteps[_i]], source_velocities[data_index, 0, 0, motion_tsteps[_i]], source_velocities[data_index, 0, 1, motion_tsteps[_i]], color='k', alpha=0.8, scale=ar_scale, headwidth=5)
-        motion_axa[_i].quiver(source_timeseries[data_index, 1, 0, motion_tsteps[_i]], source_timeseries[data_index, 1, 1, motion_tsteps[_i]], source_velocities[data_index, 1, 0, motion_tsteps[_i]], source_velocities[data_index, 1, 1, motion_tsteps[_i]], color='k', alpha=0.8, scale=ar_scale, headwidth=5)
+        motion_axa[_i].quiver(source_timeseries[0, 0, motion_tsteps[_i]], source_timeseries[0, 1, motion_tsteps[_i]], source_velocities[0, 0, motion_tsteps[_i]], source_velocities[0, 1, motion_tsteps[_i]], color='k', alpha=0.8, scale=ar_scale, headwidth=5)
+        motion_axa[_i].quiver(source_timeseries[1, 0, motion_tsteps[_i]], source_timeseries[1, 1, motion_tsteps[_i]], source_velocities[1, 0, motion_tsteps[_i]], source_velocities[1, 1, motion_tsteps[_i]], color='k', alpha=0.8, scale=ar_scale, headwidth=5)
 
         # make plots square
         motion_axa[_i].set_aspect('equal', 'box')
@@ -448,8 +656,8 @@ def __(
         # Add arrows between sub plots
         figtr = motion_fig.transFigure.inverted()
         print(_tstep_time)
-        ptB = figtr.transform(motion_ax_ld.transData.transform((_tstep_time * 1.0 - 0.0, -0.005)))
-        ptE = figtr.transform(motion_axa[_i].transData.transform((0.0, 0.5)))
+        ptB = figtr.transform(motion_ax_ld.transData.transform((_tstep_time * 1.0 - 0.0, -0.009)))
+        ptE = figtr.transform(motion_axa[_i].transData.transform((0.0, axlim)))
         arrow = matplotlib.patches.FancyArrowPatch(ptB, ptE, transform=motion_fig.transFigure, fc='r', arrowstyle='simple', alpha=0.5, mutation_scale=20.0)
         motion_fig.patches.append(arrow)
 
