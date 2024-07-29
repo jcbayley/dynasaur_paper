@@ -51,7 +51,7 @@ def __():
 
 @app.cell
 def __():
-    save_plots = False
+    save_plots = True
     return save_plots,
 
 
@@ -77,7 +77,7 @@ def __(config, create_model):
 @app.cell
 def __(os, root_dir):
     data_dir = os.path.join(root_dir, 'testout_2', 'data_output')
-    data_index = 10
+    data_index = 1
     return data_dir, data_index
 
 
@@ -269,7 +269,7 @@ def __(GridSpec, data_index, diff_angles, diff_radii, np, plt):
     ra_ax3.set_yticklabels([])
     ra_ax1.set_ylabel('Mass 1')
     ra_ax2.set_ylabel('Mass 2')
-    plt.show()
+    fig_ra_rmse
     return (
         fig_ra_rmse,
         gs_ra_rmse,
@@ -279,6 +279,13 @@ def __(GridSpec, data_index, diff_angles, diff_radii, np, plt):
         ra_ax4,
         ra_rmse_fontsize,
     )
+
+
+@app.cell
+def __(fig_ra_rmse, save_plots):
+    if save_plots:
+        fig_ra_rmse.savefig("./figures/random_radius_anglediff.pdf", bbox_inches="tight")
+    return
 
 
 @app.cell
@@ -323,6 +330,13 @@ def __(np, plt, rmse):
 
 
 @app.cell
+def __(fig_rmse, save_plots):
+    if save_plots:
+        fig_rmse.savefig("./figures/random_strain_mse_dist.pdf", bbox_inches="tight")
+    return
+
+
+@app.cell
 def __(
     GridSpec,
     data_index,
@@ -346,7 +360,7 @@ def __(
     motion_detector = 0
     motion_fontsize = 20
     (_tstart, _tend) = (1, -1)
-    axlim = 0.4
+    axlim = 0.42
     #########
     # setup the grid
     #############
@@ -424,7 +438,7 @@ def __(
     motion_sinds = np.arange(recon_timeseries.shape[1])
     #motion_tsteps = np.random.choice(_sinds, 3)
 
-    motion_tsteps = np.array([88, 699])
+    motion_tsteps = np.array([84, 693])
     for _i in range(2):
         motion_tstep_time = motion_tsteps[_i] / len(source_strain[data_index][motion_detector])
         _width = 3 / 120
@@ -445,7 +459,7 @@ def __(
     ##############
     # Plot the motion at a single point in time
     ################
-    motion_tsteps = np.array(np.array([0.15, 0.4, 0.6]) * np.shape(recon_timeseries)[-1]).astype(int)
+    motion_tsteps = np.array(np.array([0.15, 0.48, 0.62]) * np.shape(recon_timeseries)[-1]).astype(int)
     nsamples = 30
     ar_scale = 2
     for _i in range(3):
@@ -474,8 +488,8 @@ def __(
         # Add arrows between sub plots
         figtr = motion_fig.transFigure.inverted()
         print(_tstep_time)
-        ptB = figtr.transform(motion_ax_ld.transData.transform((_tstep_time * 1.0 - 0.0, -0.005)))
-        ptE = figtr.transform(motion_axa[_i].transData.transform((0.0, 0.5)))
+        ptB = figtr.transform(motion_ax_ld.transData.transform((_tstep_time * 1.0 - 0.0, -0.022)))
+        ptE = figtr.transform(motion_axa[_i].transData.transform((0.0, axlim)))
         arrow = matplotlib.patches.FancyArrowPatch(ptB, ptE, transform=motion_fig.transFigure, fc='r', arrowstyle='simple', alpha=0.5, mutation_scale=20.0)
         motion_fig.patches.append(arrow)
 
@@ -534,7 +548,7 @@ def __(
 @app.cell
 def __(motion_fig, save_plots):
     if save_plots:
-        motion_fig.savefig("./scripts/figures/random_reconstruct.pdf", bbox_inches="tight")
+        motion_fig.savefig("./figures/random_reconstruct.pdf", bbox_inches="tight")
     return
 
 
