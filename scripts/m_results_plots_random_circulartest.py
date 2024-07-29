@@ -47,8 +47,16 @@ def __():
 
 @app.cell
 def __():
-    root_dir = "/Users/joebayley/projects/massdynamics_project/results/random/test_2mass_fourier16_2d_3det_windowcoeffsstrain_sr16_transformer_5_masstriangle"
+    #root_dir = "/Users/joebayley/projects/massdynamics_project/results/random/test_2mass_fourier16_2d_3det_windowcoeffsstrain_sr16_transformer_5_masstriangle"
+    #root_dir = "/home/jf/projects/massdynamics/results/random/test_2mass_fourier16_2d_3det_windowcoeffsstrain_sr16_transformer_5_masstriangle"
+    root_dir = "/home/jf/projects/massdynamics/results/random/test_2mass_fourier32_2d_3det_windowcoeffsstrain_sr32_transformer_3_masstriangle"
     return root_dir,
+
+
+@app.cell
+def __():
+    save_plots = False
+    return save_plots,
 
 
 @app.cell
@@ -95,7 +103,7 @@ def __(config, data_generation, np):
             sample_rate=config["sample_rate"], 
             n_dimensions=3, 
             detectors=config["detectors"], 
-            window=config["window"], 
+            window="none",#config["window"], 
             window_acceleration="none", 
             basis_type=config["basis_type"],
             data_type = "circular",
@@ -160,7 +168,7 @@ def __(
     pre_model,
     source_masses,
 ):
-    t_source_tseries = compute_waveform.get_time_dynamics(
+    r_source_timeseries = compute_waveform.get_time_dynamics(
             basis_dynamics, 
             data["times"], 
             basis_type=config["basis_type"]
@@ -175,12 +183,12 @@ def __(
         compute_energy=True)
 
     t2_source_strain, _ = data_processing.normalise_data(t_source_strain, pre_model.norm_factor)
-    t3_source_strain = data_processing.get_window_strain(t2_source_strain, window_type=config["window_strain"])
+    r_source_strain = data_processing.get_window_strain(t2_source_strain, window_type=config["window_strain"])
 
-    s_strain_fn = interp1d(data["times"], t3_source_strain, kind="cubic")
+    s_strain_fn = interp1d(data["times"], r_source_strain, kind="cubic")
     source_strain = s_strain_fn(interp_times)
-    s_dyn_fn = interp1d(data["times"], t_source_tseries, kind="cubic")
-    source_tseries = s_dyn_fn(interp_times)
+    s_dyn_fn = interp1d(data["times"], r_source_timeseries, kind="cubic")
+    source_timeseries = s_dyn_fn(interp_times)
 
     t_data_strain, _ = compute_waveform.get_waveform(
         data["times"], 
@@ -190,22 +198,20 @@ def __(
         basis_type=config["basis_type"],
         compute_energy=True)
 
-    t2_data_strain, _ = data_processing.normalise_data(t_data_strain, pre_model.norm_factor)
-    data_strain = data_processing.get_window_strain(t2_data_strain, window_type=config["window_strain"])
-
+    data_strain, _ = data_processing.normalise_data(t_data_strain, pre_model.norm_factor)
+    #data_strain = data_processing.get_window_strain(t2_data_strain, window_type=config["window_strain"])
     return (
         data_strain,
+        r_source_strain,
+        r_source_timeseries,
         s_dyn_fn,
         s_strain_fn,
         source_energy,
         source_strain,
-        source_tseries,
-        t2_data_strain,
+        source_timeseries,
         t2_source_strain,
-        t3_source_strain,
         t_data_strain,
         t_source_strain,
-        t_source_tseries,
     )
 
 
@@ -259,12 +265,12 @@ def __(
     n_flow_samples,
     np,
     pre_model,
-    source_tseries,
+    r_source_timeseries,
 ):
     n_masses = 2 
     n_dimensions = 3
-    m_recon_tseries, m_recon_masses = np.zeros((n_flow_samples, n_masses, n_dimensions, len(interp_times))), np.zeros((n_flow_samples, n_masses))
-    m_recon_strain = np.zeros((n_flow_samples, 3, len(interp_times)))
+    m_recon_tseries, m_recon_masses = np.zeros((n_flow_samples, n_masses, n_dimensions, len(data["times"]))), np.zeros((n_flow_samples, n_masses))
+    m_recon_strain = np.zeros((n_flow_samples, 3, len(data["times"])))
 
     for i_f in range(n_flow_samples):
         t_co = multi_coeff_samples[i_f]
@@ -289,39 +295,51 @@ def __(
 
 
         #print(np.shape(data["times"]), np.shape(temp_recon_strain))
-        strain_fn = interp1d(data["times"], temp_recon_strain, kind="cubic")
-        recon_strain_interp = strain_fn(interp_times)
-        dyn_fn = interp1d(data["times"], t_time, kind="cubic")
-        recon_dyn_interp = dyn_fn(interp_times)
+        #strain_fn = interp1d(data["times"], temp_recon_strain, kind="cubic")
+        #recon_strain_interp = strain_fn(interp_times)
+        #dyn_fn = interp1d(data["times"], t_time, kind="cubic")
+        #recon_dyn_interp = dyn_fn(interp_times)
 
-        m_recon_tseries[i_f] = recon_dyn_interp
+        m_recon_tseries[i_f] = t_time
         m_recon_masses[i_f] = t_mass
-        m_recon_strain[i_f] = recon_strain_interp
+        m_recon_strain[i_f] = temp_recon_strain
 
     recon_masses = m_recon_masses
-    recon_timeseries = m_recon_tseries
-    recon_strain = m_recon_strain
+    r_recon_timeseries = m_recon_tseries
+    r_recon_strain = m_recon_strain
     #source_masses = source_masses
-    source_timeseries = source_tseries
+    #r_source_timeseries = source_tseries
     #source_strain = source_strain
-    recon_velocities = np.gradient(recon_timeseries, axis=-1)
-    source_velocities = np.gradient(source_timeseries, axis=-1)
+    r_recon_velocities = np.gradient(r_recon_timeseries, axis=-1)
+    r_source_velocities = np.gradient(r_source_timeseries, axis=-1)
 
+    strain_fn = interp1d(data["times"], r_recon_strain, kind="cubic")
+    recon_strain = strain_fn(interp_times)
+    dyn_fn = interp1d(data["times"], r_recon_timeseries, kind="cubic")
+    recon_timeseries = dyn_fn(interp_times)
+    dyn_fn2 = interp1d(data["times"], r_recon_velocities, kind="cubic")
+    recon_velocities = dyn_fn2(interp_times)
+
+    dyn_fn2s = interp1d(data["times"], r_source_velocities, kind="cubic")
+    source_velocities = dyn_fn2s(interp_times)
     return (
         dyn_fn,
+        dyn_fn2,
+        dyn_fn2s,
         i_f,
         m_recon_masses,
         m_recon_strain,
         m_recon_tseries,
         n_dimensions,
         n_masses,
-        recon_dyn_interp,
+        r_recon_strain,
+        r_recon_timeseries,
+        r_recon_velocities,
+        r_source_velocities,
         recon_masses,
         recon_strain,
-        recon_strain_interp,
         recon_timeseries,
         recon_velocities,
-        source_timeseries,
         source_velocities,
         strain_fn,
         t_co,
@@ -450,7 +468,7 @@ def __(GridSpec, data_index, diff_angles, diff_radii, np, plt):
     ra_ax3.set_yticklabels([])
     ra_ax1.set_ylabel('Mass 1')
     ra_ax2.set_ylabel('Mass 2')
-    plt.show()
+    fig_ra_rmse
     return (
         fig_ra_rmse,
         gs_ra_rmse,
@@ -512,9 +530,12 @@ def __(source_strain):
 @app.cell
 def __(
     GridSpec,
+    data,
     matplotlib,
     np,
     plt,
+    r_recon_strain,
+    r_source_strain,
     recon_strain,
     recon_timeseries,
     recon_velocities,
@@ -530,7 +551,7 @@ def __(
     motion_fontsize = 20
     time = np.linspace(0, 1, len(source_strain[motion_detector]))
     (_tstart, _tend) = int(0.25*len(time)),int(0.75*len(time))
-    axlim = 0.2
+    axlim = 0.12
     #########
     # setup the grid
     #############
@@ -577,6 +598,7 @@ def __(
 
     # find and plot quantiles
     motion_qnts = np.quantile(np.array(recon_strain)[:,motion_detector], [0.1, 0.5, 0.9], axis=0)
+    r_motion_qnts = np.quantile(np.array(r_recon_strain)[:,motion_detector], [0.1, 0.5, 0.9], axis=0)
 
     motion_ax_l.axvspan(time[0], time[_tstart], color='#d3d3d3',  lw=0)
     motion_ax_l.axvspan(time[_tend], time[-1], color='#d3d3d3',  lw=0)
@@ -586,11 +608,19 @@ def __(
     motion_ax_l.plot(time, motion_qnts[1], color='C2', label='reconstructed 90% confidence')
     motion_ax_l.fill_between(time, motion_qnts[0], motion_qnts[2], alpha=0.5, color='C2')
 
+    #plot data points
+    motion_ax_l.plot(data["times"], r_motion_qnts[1], color="C2", marker="o", ms=3, ls="none", label="Recon datapoints")
+    motion_ax_l.plot(data["times"], r_source_strain[motion_detector], color="k", marker="o", ms=3, ls="none", label="True datapoints")
+
     # residual plot
     motion_ax_ld.plot(time, motion_qnts[1] - source_strain[motion_detector], color='C2', label='recovered 90% confidence')
     motion_ax_ld.fill_between(time, motion_qnts[0] - source_strain[motion_detector], motion_qnts[2] - source_strain[motion_detector], alpha=0.5, color='C2')
     motion_ax_ld.plot(time, source_strain[motion_detector] - source_strain[motion_detector], color='k', label='true')
     motion_ax_l.legend()
+
+    # plot residual data points
+    motion_ax_ld.plot(data["times"], r_motion_qnts[1]- r_source_strain[motion_detector], color="C2", marker="o", ms=3, ls="none", label="Recon datapoints")
+    motion_ax_ld.plot(data["times"], r_source_strain[motion_detector] - r_source_strain[motion_detector], color="k", marker="o", ms=3, ls="none", label="True datapoints")
 
 
 
@@ -603,7 +633,7 @@ def __(
     motion_sinds = np.arange(recon_timeseries.shape[1])
     #motion_tsteps = np.random.choice(_sinds, 3)
 
-    motion_tsteps = np.array([88, 699])
+    motion_tsteps = np.array([87, 695])
     for _i in range(2):
         motion_tstep_time = motion_tsteps[_i] / len(source_strain[motion_detector])
         _width = 3 / 120
@@ -612,10 +642,10 @@ def __(
         motion_axs[_i].plot(recon_timeseries[motion_tsteps[_i], 1, 0, _tstart:_tend], recon_timeseries[motion_tsteps[_i], 1, 1, _tstart:_tend], color='C1', ls='--', label='recovered (m2)')
         motion_axs[_i].plot(source_timeseries[1, 0, _tstart:_tend], source_timeseries[ 1, 1, _tstart:_tend], color='k', label='true (m2)')
         motion_axs[_i].plot(source_timeseries[0, 0, _tstart:_tend], source_timeseries[0, 1, _tstart:_tend], color='k', ls='--', label='true (m1)')
-        motion_axs[_i].scatter(recon_timeseries[motion_tsteps[_i], 0, 0, -1], recon_timeseries[motion_tsteps[_i], 0, 1, -1], color='C0', s=20)
-        motion_axs[_i].scatter(recon_timeseries[motion_tsteps[_i], 1, 0, -1], recon_timeseries[motion_tsteps[_i], 1, 1, -1], color='C1', s=20)
-        motion_axs[_i].scatter(source_timeseries[1, 0, -1], source_timeseries[1, 1, -1], color='k', s=20)
-        motion_axs[_i].scatter(source_timeseries[0, 0, -1], source_timeseries[0, 1, -1], color='k', s=20)
+        motion_axs[_i].scatter(recon_timeseries[motion_tsteps[_i], 0, 0, _tend-1], recon_timeseries[motion_tsteps[_i], 0, 1, _tend-1], color='C0', s=20)
+        motion_axs[_i].scatter(recon_timeseries[motion_tsteps[_i], 1, 0, _tend-1], recon_timeseries[motion_tsteps[_i], 1, 1, _tend-1], color='C1', s=20)
+        motion_axs[_i].scatter(source_timeseries[1, 0, _tend-1], source_timeseries[1, 1, _tend-1], color='k', s=20)
+        motion_axs[_i].scatter(source_timeseries[0, 0, _tend-1], source_timeseries[0, 1, _tend-1], color='k', s=20)
 
         motion_axs[_i].set_aspect('equal', 'box')
         motion_axs[_i].set_aspect('equal', 'box')
@@ -624,7 +654,7 @@ def __(
     ##############
     # Plot the motion at a single point in time
     ################
-    motion_tsteps = np.array(np.array([0.15, 0.4, 0.6]) * np.shape(recon_timeseries)[-1]).astype(int)
+    motion_tsteps = np.array(np.array([0.15, 0.36, 0.52]) * np.shape(recon_timeseries)[-1]).astype(int)
     nsamples = 30
     ar_scale = 2
     for _i in range(3):
@@ -656,7 +686,7 @@ def __(
         # Add arrows between sub plots
         figtr = motion_fig.transFigure.inverted()
         print(_tstep_time)
-        ptB = figtr.transform(motion_ax_ld.transData.transform((_tstep_time * 1.0 - 0.0, -0.009)))
+        ptB = figtr.transform(motion_ax_ld.transData.transform((_tstep_time * 1.0 - 0.0, -0.02)))
         ptE = figtr.transform(motion_axa[_i].transData.transform((0.0, axlim)))
         arrow = matplotlib.patches.FancyArrowPatch(ptB, ptE, transform=motion_fig.transFigure, fc='r', arrowstyle='simple', alpha=0.5, mutation_scale=20.0)
         motion_fig.patches.append(arrow)
@@ -706,10 +736,18 @@ def __(
         pos3,
         ptB,
         ptE,
+        r_motion_qnts,
         slim,
         time,
         tlim,
     )
+
+
+@app.cell
+def __(motion_fig, save_plots):
+    if save_plots:
+        motion_fig.savefig("./scripts/figures/random_circular_reconstruct.pdf", bbox_inches="tight")
+    return
 
 
 @app.cell

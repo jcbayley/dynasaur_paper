@@ -43,7 +43,14 @@ def __():
 
 @app.cell
 def __():
-    root_dir = "/Users/joebayley/projects/massdynamics_project/results/circular/test_2mass_timeseries32_2d_3det_nowindow_sr32_period1_2_transformer_1_masstriangle_unhanded"
+    save_plots=False
+    return save_plots,
+
+
+@app.cell
+def __():
+    #root_dir = "/Users/joebayley/projects/massdynamics_project/results/circular/test_2mass_timeseries32_2d_3det_nowindow_sr32_period1_2_transformer_1_masstriangle_unhanded"
+    root_dir = "/home/jf/projects/massdynamics/results/circular/test_2mass_timeseries32_2d_3det_nowindow_sr32_period1_2_transformer_1_masstriangle_unhanded"
     return root_dir,
 
 
@@ -104,19 +111,19 @@ def __(data_dir, h5py, interp1d, np, os):
     r_recon_velocities = np.gradient(r_recon_timeseries, axis=-1)
     r_source_velocities = np.gradient(r_source_timeseries, axis=-1)
 
-    _times = np.linspace(0, 1, np.shape(r_source_strain)[-1])
+    r_times = np.linspace(0, 1, np.shape(r_source_strain)[-1])
     interp_times = np.linspace(0, 1, 128)
-    strain_fn = interp1d(_times, r_source_strain, kind='cubic')
+    strain_fn = interp1d(r_times, r_source_strain, kind='cubic')
     source_strain = strain_fn(interp_times)
-    dyn_fn = interp1d(_times, r_source_timeseries, kind='cubic')
+    dyn_fn = interp1d(r_times, r_source_timeseries, kind='cubic')
     source_timeseries = dyn_fn(interp_times)
-    vel_fn = interp1d(_times, r_source_velocities, kind='cubic')
+    vel_fn = interp1d(r_times, r_source_velocities, kind='cubic')
     source_velocities = vel_fn(interp_times)
-    strain_fn = interp1d(_times, r_recon_strain, kind='cubic')
+    strain_fn = interp1d(r_times, r_recon_strain, kind='cubic')
     recon_strain = strain_fn(interp_times)
-    dyn_fn = interp1d(_times, r_recon_timeseries, kind='cubic')
+    dyn_fn = interp1d(r_times, r_recon_timeseries, kind='cubic')
     recon_timeseries = dyn_fn(interp_times)
-    vel_fn = interp1d(_times, r_recon_velocities, kind='cubic')
+    vel_fn = interp1d(r_times, r_recon_velocities, kind='cubic')
     recon_velocities = vel_fn(interp_times)
     return (
         data_files,
@@ -131,6 +138,7 @@ def __(data_dir, h5py, interp1d, np, os):
         r_source_strain,
         r_source_timeseries,
         r_source_velocities,
+        r_times,
         recon_masses,
         recon_strain,
         recon_timeseries,
@@ -241,18 +249,19 @@ def __(GridSpec, ba, diff_angles, diff_radii, np, plt):
     ax_s2_rarmse = fig_rarmse.add_subplot(gs_rarmse[1, 0])
 
     plot_ind = 0
-    ax_s1_rarmse.hist(np.ravel(diff_radii[plot_ind,:,0]), bins=200, density=True, alpha=0.8)
+    rbins = np.linspace(-0.05, 0.05, 50)
+    ax_s1_rarmse.hist(np.ravel(diff_radii[plot_ind,:,0]), bins=rbins, density=True, alpha=0.8)
     #ax_s1.axvline(np.mean(source_radii[plot_ind,0]), color="r")
     ax_s1_rarmse.axvline(0, color="C3")
     #ax[0,0].set_xlim([0.,0.5])
-    ax_s2_rarmse.hist(np.ravel(diff_radii[plot_ind,:,1]), bins=200 , density=True, alpha=0.8)
+    ax_s2_rarmse.hist(np.ravel(diff_radii[plot_ind,:,1]), bins=rbins , density=True, alpha=0.8)
     #ax_s2.axvline(np.mean(source_radii[plot_ind,1]), color="r")
     ax_s2_rarmse.axvline(0, color="C3")
     #ax[0,1].set_xlim([0.,0.7])
     ax_s1_rarmse.set_xlabel("Radius difference")
     ax_s2_rarmse.set_xlabel("Radius difference")
-    ax_s1_rarmse.set_xlim([-0.3,0.1])
-    ax_s2_rarmse.set_xlim([-0.1,0.3])
+    ax_s1_rarmse.set_xlim([-0.03,0.01])
+    ax_s2_rarmse.set_xlim([-0.01,0.03])
 
 
     diff_angles[diff_angles < -1] += 2*np.pi 
@@ -294,7 +303,15 @@ def __(GridSpec, ba, diff_angles, diff_radii, np, plt):
         gs_rarmse,
         l_fontsize,
         plot_ind,
+        rbins,
     )
+
+
+@app.cell
+def __(fig_rarmse, save_plots):
+    if save_plots:
+        fig_rarmse.savefig("./scripts/figures/circular_radius_anglediff.pdf", bbox_inches="tight")
+    return
 
 
 @app.cell
@@ -345,6 +362,9 @@ def __(
     matplotlib,
     np,
     plt,
+    r_recon_strain,
+    r_source_strain,
+    r_times,
     recon_strain,
     recon_timeseries,
     recon_velocities,
@@ -407,9 +427,17 @@ def __(
 
     # find and plot quantiles
     motion_qnts = np.quantile(np.array(recon_strain)[data_index, :,motion_detector], [0.1, 0.5, 0.9], axis=0)
+    r_motion_qnts = np.quantile(np.array(r_recon_strain)[data_index, :,motion_detector], [0.1, 0.5, 0.9], axis=0)
 
     motion_ax_l.plot(time, motion_qnts[1], color='C2', label='reconstructed 90% confidence')
     motion_ax_l.fill_between(time, motion_qnts[0], motion_qnts[2], alpha=0.5, color='C2')
+
+    # plot data points
+    motion_ax_l.plot(r_times, r_source_strain[data_index][motion_detector], color="k", marker="o", ms=3, ls="none", label="True datapoints")
+    yerr_up_l = r_motion_qnts[2] - r_motion_qnts[1]
+    yerr_low_l = r_motion_qnts[1] - r_motion_qnts[0]
+    #motion_ax_l.errorbar(r_times, r_motion_qnts[1], yerr=[yerr_low_l, yerr_up_l], color="C2", marker="o", ms=3, ls="none", label="Recon datapoints", capsize=3)
+    motion_ax_l.plot(r_times, r_motion_qnts[1], color="C2", marker="o", ms=3, ls="none", label="Recon datapoints")
 
     # residual plot
     motion_ax_ld.plot(time, motion_qnts[1] - source_strain[data_index][motion_detector], color='C2', label='recovered 90% confidence')
@@ -417,13 +445,19 @@ def __(
     motion_ax_ld.plot(time, source_strain[data_index][motion_detector] - source_strain[data_index][motion_detector], color='k', label='true')
     motion_ax_l.legend()
 
+    # plot residual data points
+    motion_ax_ld.plot(r_times, r_source_strain[data_index][motion_detector] - r_source_strain[data_index][motion_detector], color="k", marker="o", ms=3, ls="none", label="True datapoints")
+    #motion_ax_ld.errorbar(r_times, r_motion_qnts[1] - r_source_strain[data_index][motion_detector], yerr=[yerr_low_l, yerr_up_l], color="C2", marker="o", ms=3, ls="none", label="Recon datapoints", capsize=3)
+    motion_ax_ld.plot(r_times, r_motion_qnts[1] - r_source_strain[data_index][motion_detector], color="C2", marker="o", ms=3, ls="none", label="Recon datapoints")
+
+
     ###############
     # Plot the motion at all times
     ################
     motion_sinds = np.arange(recon_timeseries.shape[1])
     #motion_tsteps = np.random.choice(_sinds, 3)
 
-    motion_tsteps = np.array([88, 699])
+    motion_tsteps = np.array([87, 698])
     for _i in range(2):
         motion_tstep_time = motion_tsteps[_i] / len(source_strain[data_index][motion_detector])
         _width = 3 / 120
@@ -473,7 +507,7 @@ def __(
         # Add arrows between sub plots
         figtr = motion_fig.transFigure.inverted()
         print(_tstep_time)
-        ptB = figtr.transform(motion_ax_ld.transData.transform((_tstep_time * 1.0 - 0.0, -0.005)))
+        ptB = figtr.transform(motion_ax_ld.transData.transform((_tstep_time * 1.0 - 0.0, -0.02)))
         ptE = figtr.transform(motion_axa[_i].transData.transform((0.0, axlim)))
         arrow = matplotlib.patches.FancyArrowPatch(ptB, ptE, transform=motion_fig.transFigure, fc='r', arrowstyle='simple', alpha=0.5, mutation_scale=20.0)
         motion_fig.patches.append(arrow)
@@ -523,10 +557,20 @@ def __(
         pos3,
         ptB,
         ptE,
+        r_motion_qnts,
         slim,
         time,
         tlim,
+        yerr_low_l,
+        yerr_up_l,
     )
+
+
+@app.cell
+def __(motion_fig, save_plots):
+    if save_plots:
+        motion_fig.savefig("./scripts/figures/circular_reconstruct.pdf", bbox_inches="tight")
+    return
 
 
 @app.cell
