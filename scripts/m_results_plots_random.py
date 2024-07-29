@@ -43,8 +43,9 @@ def __():
 
 @app.cell
 def __():
-    root_dir = "/Users/joebayley/projects/massdynamics_project/results/random/test_2mass_fourier16_2d_3det_windowcoeffsstrain_sr16_transformer_5_masstriangle"
-    root_dir = "/home/jf/projects/massdynamics/results/random/test_2mass_fourier16_2d_3det_windowcoeffsstrain_sr16_transformer_5_masstriangle"
+    #root_dir = "/Users/joebayley/projects/massdynamics_project/results/random/test_2mass_fourier16_2d_3det_windowcoeffsstrain_sr16_transformer_5_masstriangle"
+    #root_dir = "/home/jf/projects/massdynamics/results/random/test_2mass_fourier16_2d_3det_windowcoeffsstrain_sr16_transformer_5_masstriangle"
+    root_dir = "/home/jf/projects/massdynamics/results/random/test_2mass_fourier32_2d_3det_windowcoeffsstrain_sr32_transformer_3_masstriangle"
     return root_dir,
 
 
@@ -76,7 +77,7 @@ def __(config, create_model):
 @app.cell
 def __(os, root_dir):
     data_dir = os.path.join(root_dir, 'testout_2', 'data_output')
-    data_index = 35
+    data_index = 10
     return data_dir, data_index
 
 
