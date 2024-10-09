@@ -14,9 +14,10 @@ def __():
     from matplotlib.gridspec import GridSpec
     import scipy
     import torch
-    import massdynamics
+    import dynasaur
+    from dynasaur.config import read_config
     import json
-    from massdynamics import create_model
+    from dynasaur import create_model
     from scipy.interpolate import interp1d
     import brokenaxes as ba
     import corner
@@ -27,15 +28,16 @@ def __():
         ba,
         corner,
         create_model,
+        dynasaur,
         h5py,
         interp1d,
         json,
-        massdynamics,
         matplotlib,
         np,
         os,
         plot_motions_and_strain,
         plt,
+        read_config,
         scipy,
         torch,
     )
@@ -43,14 +45,14 @@ def __():
 
 @app.cell
 def __():
-    root_dir = "/Users/joebayley/projects/massdynamics_project/results/random/test_2mass_fourier16_2d_3det_windowcoeffsstrain_sr16_transformer_5_masstriangle"
+    root_dir = "/Users/joebayley/projects/massdynamics_project/dynasaur_results/random/"
     return root_dir,
 
 
 @app.cell
-def __(json, os, root_dir):
-    with open(os.path.join(root_dir, 'config.json'), 'r') as _f:
-        config = json.load(_f)
+def __(os, read_config, root_dir):
+    config = read_config(os.path.join(root_dir, 'config.ini'),)
+    config["Training"]["device"] = "cpu"
     return config,
 
 
@@ -69,7 +71,7 @@ def __(config, create_model):
 @app.cell
 def __(os, root_dir):
     data_dir = os.path.join(root_dir, 'testout_2', 'data_output')
-    data_index = 35
+    data_index = 6
     return data_dir, data_index
 
 
@@ -270,6 +272,12 @@ def __(GridSpec, data_index, diff_angles, diff_radii, np, plt):
         ra_ax4,
         ra_rmse_fontsize,
     )
+
+
+@app.cell
+def __():
+    #fig_ra_rmse.savefig("./figures/random_radius_anglediff.pdf", bbox_inches="tight")
+    return
 
 
 @app.cell
@@ -502,6 +510,12 @@ def __(
         time,
         tlim,
     )
+
+
+@app.cell
+def __():
+    #motion_fig.savefig("./figures/random_reconstruct.pdf", bbox_inches="tight")
+    return
 
 
 @app.cell

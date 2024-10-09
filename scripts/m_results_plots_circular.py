@@ -14,9 +14,10 @@ def __():
     from matplotlib.gridspec import GridSpec
     import scipy
     import torch
-    import massdynamics
+    import dynasaur
+    from dynasaur.config import read_config
     import json
-    from massdynamics import create_model
+    from dynasaur import create_model
     from scipy.interpolate import interp1d
     import brokenaxes as ba
     import corner
@@ -27,15 +28,16 @@ def __():
         ba,
         corner,
         create_model,
+        dynasaur,
         h5py,
         interp1d,
         json,
-        massdynamics,
         matplotlib,
         np,
         os,
         plot_motions_and_strain,
         plt,
+        read_config,
         scipy,
         torch,
     )
@@ -43,14 +45,15 @@ def __():
 
 @app.cell
 def __():
-    root_dir = "/Users/joebayley/projects/massdynamics_project/results/circular/test_2mass_timeseries32_2d_3det_nowindow_sr32_period1_2_transformer_1_masstriangle_unhanded"
+    #root_dir = "/Users/joebayley/projects/massdynamics_project/results/circular/test_2mass_timeseries32_2d_3det_nowindow_sr32_period1_2_transformer_1_masstriangle_unhanded"
+    root_dir = "/Users/joebayley/projects/massdynamics_project/dynasaur_results/circular/"
     return root_dir,
 
 
 @app.cell
-def __(json, os, root_dir):
-    with open(os.path.join(root_dir, 'config.json'), 'r') as _f:
-        config = json.load(_f)
+def __(os, read_config, root_dir):
+    config = read_config(os.path.join(root_dir, 'config.ini'),)
+    config["Training"]["device"] = "cpu"
     return config,
 
 
@@ -58,6 +61,12 @@ def __(json, os, root_dir):
 def __(os, root_dir, torch):
     weights = torch.load(os.path.join(root_dir, 'test_model.pt'), map_location='cpu')
     return weights,
+
+
+@app.cell
+def __():
+    save_figures = False
+    return save_figures,
 
 
 @app.cell
@@ -69,7 +78,7 @@ def __(config, create_model):
 @app.cell
 def __(os, root_dir):
     data_dir = os.path.join(root_dir, 'testout_2', 'data_output')
-    data_index = 2
+    data_index = 5
     return data_dir, data_index
 
 
@@ -251,8 +260,8 @@ def __(GridSpec, ba, diff_angles, diff_radii, np, plt):
     #ax[0,1].set_xlim([0.,0.7])
     ax_s1_rarmse.set_xlabel("Radius difference")
     ax_s2_rarmse.set_xlabel("Radius difference")
-    ax_s1_rarmse.set_xlim([-0.3,0.1])
-    ax_s2_rarmse.set_xlim([-0.1,0.3])
+    ax_s1_rarmse.set_xlim([-0.06,0.01])
+    ax_s2_rarmse.set_xlim([-0.01,0.06])
 
 
     diff_angles[diff_angles < -1] += 2*np.pi 
@@ -283,7 +292,6 @@ def __(GridSpec, ba, diff_angles, diff_radii, np, plt):
     bax2.spines['top'][0].set_visible(True)
     bax2.spines['top'][1].set_visible(True)
     bax2.spines['right'][0].set_visible(True)
-    #fig.savefig("../paper/circular_radius_anglediff.pdf", bbox_inches="tight")
     fig_rarmse
     return (
         ax_s1_rarmse,
@@ -295,6 +303,13 @@ def __(GridSpec, ba, diff_angles, diff_radii, np, plt):
         l_fontsize,
         plot_ind,
     )
+
+
+@app.cell
+def __(fig_rarmse, save_figures):
+    if save_figures:
+        fig_rarmse.savefig("./figures/circular_radius_anglediff.pdf", bbox_inches="tight")
+    return
 
 
 @app.cell
@@ -359,7 +374,7 @@ def __(
     motion_detector = 0
     motion_fontsize = 20
     (_tstart, _tend) = (1, -1)
-    axlim = 0.2
+    axlim = 0.25
     #########
     # setup the grid
     #############
@@ -527,6 +542,13 @@ def __(
         time,
         tlim,
     )
+
+
+@app.cell
+def __(motion_fig, save_figures):
+    if save_figures:
+        motion_fig.savefig("./figures/circular_reconstruct.pdf", bbox_inches="tight")
+    return
 
 
 @app.cell
@@ -790,6 +812,7 @@ def __(
     _ylim = 0.3
     _ax[0, 3].set_ylim([-_ylim, _ylim])
     _ax[1, 3].set_ylim([-_ylim, _ylim])
+    plt.show()
     return alpha, sed, sst
 
 
@@ -876,12 +899,14 @@ def __(np, plt, separation, ts_mean_sep):
 
 
 @app.cell
-def __(np, plt, ts_mse):
+def __(np, plt, save_figures, ts_mse):
     (_fig, _ax) = plt.subplots()
     _vp = _ax.violinplot(np.log10(ts_mse[:, :].T), showextrema=True, widths=2, showmedians=True)
     _ax.set_ylabel('Log10 MSE of mass separation/true separation')
     _ax.set_xlabel('Data index')
-    _fig.savefig('./paper/random_position_separation_mse_dist.png')
+    plt.show()
+    if save_figures:
+        _fig.savefig('./paper/random_position_separation_mse_dist.png')
     return
 
 
@@ -899,9 +924,7 @@ def __(losses):
 
 
 @app.cell
-def __(np, os, plt, root_dir):
-    with open(os.path.join(root_dir, 'train_losses.txt'), 'r') as _f:
-        losses = np.loadtxt(_f)
+def __(losses, plt, save_figures):
     (_fig, _ax) = plt.subplots(figsize=(6, 3))
     fontsize = 15
     _ax.plot(losses[0], label='Training loss', lw=2)
@@ -910,8 +933,10 @@ def __(np, os, plt, root_dir):
     _ax.set_ylabel('Loss', fontsize=fontsize)
     _ax.legend(fontsize=fontsize)
     _fig.tight_layout()
-    _fig.savefig('../paper/training_losses.pdf', format='pdf')
-    return fontsize, losses
+    plt.show()
+    if save_figures:
+        _fig.savefig('../paper/training_losses.pdf', format='pdf')
+    return fontsize,
 
 
 @app.cell

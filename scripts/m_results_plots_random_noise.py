@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.7.9"
+__generated_with = "0.7.12"
 app = marimo.App(width="full")
 
 
@@ -14,9 +14,10 @@ def __():
     from matplotlib.gridspec import GridSpec
     import scipy
     import torch
-    import massdynamics
+    import dynasaur
+    from dynasaur.config import read_config
     import json
-    from massdynamics import create_model
+    from dynasaur import create_model
     from scipy.interpolate import interp1d
     import brokenaxes as ba
     import corner
@@ -27,15 +28,16 @@ def __():
         ba,
         corner,
         create_model,
+        dynasaur,
         h5py,
         interp1d,
         json,
-        massdynamics,
         matplotlib,
         np,
         os,
         plot_motions_and_strain,
         plt,
+        read_config,
         scipy,
         torch,
     )
@@ -43,14 +45,14 @@ def __():
 
 @app.cell
 def __():
-    root_dir = '/Users/joebayley/projects/massdynamics_project/results/random_noise/test_2mass_fourier32_2d_3det_windowcoeffsstrain_sr32_transformer_3_masstriangle_snr20_rt2/'
+    root_dir = "/Users/joebayley/projects/massdynamics_project/dynasaur_results/random_noise/"
     return root_dir,
 
 
 @app.cell
-def __(json, os, root_dir):
-    with open(os.path.join(root_dir, 'config.json'), 'r') as _f:
-        config = json.load(_f)
+def __(os, read_config, root_dir):
+    config = read_config(os.path.join(root_dir, 'config.ini'),)
+    config["Training"]["device"] = "cpu"
     return config,
 
 
@@ -69,7 +71,7 @@ def __(config, create_model):
 @app.cell
 def __(os, root_dir):
     data_dir = os.path.join(root_dir, 'testout_2', 'data_output')
-    data_index = 35
+    data_index = 0
     return data_dir, data_index
 
 
@@ -334,7 +336,7 @@ def __(
     motion_detector = 0
     motion_fontsize = 20
     (_tstart, _tend) = (1, -1)
-    axlim = 0.5
+    axlim = 0.3
     #########
     # setup the grid
     #############
@@ -457,7 +459,7 @@ def __(
     ############
     # Define plotting parameters
     ##########
-    motion_axa[0].legend()
+    motion_axa[1].legend(bbox_to_anchor=(0.78,0.05), fancybox=True, ncol=4, bbox_transform=motion_fig.transFigure)
     motion_fig.tight_layout()
     pos10 = motion_axs[0].get_position()
     pos11 = motion_axs[1].get_position()
@@ -467,7 +469,7 @@ def __(
     motion_ax_ld.set_position([pos3.x0, pos3.y0, pos3.width, pos3.height])
     motion_axs[0].set_position([pos10.x0, pos10.y0 - 0.05, pos10.width, pos10.height])
     motion_axs[1].set_position([pos11.x0, pos11.y0 - 0.05, pos11.width, pos11.height])
-    plt.show()
+    motion_fig
     return (
         ar_scale,
         arrow,

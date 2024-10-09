@@ -14,10 +14,11 @@ def __():
     from matplotlib.gridspec import GridSpec
     import scipy
     import torch
-    import massdynamics
+    import dynasaur
+    from dynasaur.config import read_config
     import json
-    from massdynamics import create_model
-    from massdynamics.data_generation import data_generation, data_processing, compute_waveform
+    from dynasaur import create_model
+    from dynasaur.data_generation import data_generation, data_processing, compute_waveform
     from scipy.interpolate import interp1d
     import brokenaxes as ba
     import corner
@@ -31,15 +32,16 @@ def __():
         create_model,
         data_generation,
         data_processing,
+        dynasaur,
         h5py,
         interp1d,
         json,
-        massdynamics,
         matplotlib,
         np,
         os,
         plot_motions_and_strain,
         plt,
+        read_config,
         scipy,
         torch,
     )
@@ -47,14 +49,14 @@ def __():
 
 @app.cell
 def __():
-    root_dir = "/Users/joebayley/projects/massdynamics_project/results/random/test_2mass_fourier16_2d_3det_windowcoeffsstrain_sr16_transformer_5_masstriangle"
+    root_dir = "/Users/joebayley/projects/massdynamics_project/dynasaur_results/random/"
     return root_dir,
 
 
 @app.cell
-def __(json, os, root_dir):
-    with open(os.path.join(root_dir, 'config.json'), 'r') as _f:
-        config = json.load(_f)
+def __(os, read_config, root_dir):
+    config = read_config(os.path.join(root_dir, 'config.ini'),)
+    config["Training"]["device"] = "cpu"
     return config,
 
 
@@ -66,13 +68,13 @@ def __(os, root_dir, torch):
 
 @app.cell
 def __(config, np):
-    config["prior_args"].setdefault("sky_position", (np.pi, np.pi/2))
+    config.get("Data","prior_args").setdefault("sky_position", (np.pi, np.pi/2))
     return
 
 
 @app.cell
 def __(config, create_model, root_dir):
-    config["root_dir"] = root_dir
+    config["General"]["root_dir"] = root_dir
     pre_model, model, _ = create_model.load_models(config, device="cpu")
     return model, pre_model
 
@@ -90,14 +92,14 @@ def __(config, data_generation, np):
 
     data_arr = data_generation.generate_data(
             n_data=1, 
-            basis_order=config["basis_order"], 
-            n_masses=config["n_masses"], 
-            sample_rate=config["sample_rate"], 
+            basis_order=config.get("Data","basis_order"), 
+            n_masses=config.get("Data","n_masses"), 
+            sample_rate=config.get("Data","sample_rate"), 
             n_dimensions=3, 
-            detectors=config["detectors"], 
-            window=config["window"], 
+            detectors=config.get("Data","detectors"), 
+            window_strain=config.get("Data","window_strain"), 
             window_acceleration="none", 
-            basis_type=config["basis_type"],
+            basis_type=config.get("Data","basis_type"),
             data_type = "circular",
             fourier_weight=0.0,
             coordinate_type="cartesian",
@@ -123,12 +125,12 @@ def __(config, data, data_processing, pre_model):
                 data["basis_dynamics"],
                 data["source_masses"], 
                 data["strain_timeseries"], 
-                window_strain=config["window_strain"], 
-                spherical_coords=config["spherical_coords"], 
+                window_strain=config.get("Data","window_strain"), 
+                spherical_coords=config.get("Data","spherical_coords"), 
                 initial_run=False,
-                n_masses=config["n_masses"],
-                device=config["device"],
-                basis_type=config["basis_type"],
+                n_masses=config.get("Data","n_masses"),
+                device=config.get("Training","device"),
+                basis_type=config.get("Data","basis_type"),
                 n_dimensions=3)
     return processed_strain,
 
@@ -163,19 +165,19 @@ def __(
     t_source_tseries = compute_waveform.get_time_dynamics(
             basis_dynamics, 
             data["times"], 
-            basis_type=config["basis_type"]
+            basis_type=config.get("Data","basis_type")
             )
 
     t_source_strain, source_energy = compute_waveform.get_waveform(
         data["times"], 
         source_masses, 
         basis_dynamics, 
-        config["detectors"], 
-        basis_type=config["basis_type"],
+        config.get("Data","detectors"), 
+        basis_type=config.get("Data","basis_type"),
         compute_energy=True)
 
     t2_source_strain, _ = data_processing.normalise_data(t_source_strain, pre_model.norm_factor)
-    t3_source_strain = data_processing.get_window_strain(t2_source_strain, window_type=config["window_strain"])
+    t3_source_strain = data_processing.get_window_strain(t2_source_strain, window_type=config.get("Data","window_strain"))
 
     s_strain_fn = interp1d(data["times"], t3_source_strain, kind="cubic")
     source_strain = s_strain_fn(interp_times)
@@ -186,13 +188,12 @@ def __(
         data["times"], 
         source_masses, 
         basis_dynamics, 
-        config["detectors"], 
-        basis_type=config["basis_type"],
+        config.get("Data","detectors"), 
+        basis_type=config.get("Data","basis_type"),
         compute_energy=True)
 
     t2_data_strain, _ = data_processing.normalise_data(t_data_strain, pre_model.norm_factor)
-    data_strain = data_processing.get_window_strain(t2_data_strain, window_type=config["window_strain"])
-
+    data_strain = data_processing.get_window_strain(t2_data_strain, window_type=config.get("Data","window_strain"))
     return (
         data_strain,
         s_dyn_fn,
@@ -213,8 +214,12 @@ def __(
 def __(data_strain, model, np, pre_model, torch):
     n_flow_samples = 800
     n_animate_samples = 100
-    input_data = pre_model(torch.from_numpy(np.array([data_strain])).to(torch.float32))
-    multi_coeffmass_samples = model(input_data).sample((n_flow_samples, )).cpu().squeeze(1)
+    with torch.no_grad():
+        input_data = pre_model(torch.from_numpy(np.array([data_strain])).to(torch.float32))
+        #multi_coeffmass_samples = model(input_data).sample((n_flow_samples, )).cpu().squeeze(1)
+        input_data = input_data.repeat_interleave(n_flow_samples, dim=0) 
+        multi_coeffmass_samples = model.sample(input_data.size(0), conditional=input_data).cpu().numpy()
+        multi_coeffmass_samples = multi_coeffmass_samples.reshape(n_flow_samples,-1)
     return (
         input_data,
         multi_coeffmass_samples,
@@ -235,14 +240,14 @@ def __(
                 pre_model, 
                 multi_coeffmass_samples,
                 strain_timeseries, 
-                window_strain=config["window_strain"], 
-                spherical_coords=config["spherical_coords"], 
+                window_strain=config.get("Data","window_strain"), 
+                spherical_coords=config.get("Data","spherical_coords"), 
                 initial_run=False,
-                n_masses=config["n_masses"],
-                device=config["device"],
-                basis_type=config["basis_type"],
-                basis_order=config["basis_order"],
-                n_dimensions=config["n_dimensions"])
+                n_masses=config.get("Data","n_masses"),
+                device=config.get("Training","device"),
+                basis_type=config.get("Data","basis_type"),
+                basis_order=config.get("Data","basis_order"),
+                n_dimensions=config.get("Data","n_dimensions"))
     return multi_coeff_samples, multi_mass_samples
 
 
@@ -272,7 +277,7 @@ def __(
         t_time = compute_waveform.get_time_dynamics(
             multi_coeff_samples[i_f],
             data["times"],  
-            basis_type=config["basis_type"])
+            basis_type=config.get("Data","basis_type"))
 
 
         temp_recon_strain, temp_recon_energy, temp_m_recon_coeffs = data_processing.get_strain_from_samples(
@@ -280,10 +285,10 @@ def __(
             t_mass,
             np.array(t_co), 
             detectors=["H1","L1","V1"],
-            window_acceleration=config["window_acceleration"], 
-            window=config["window"], 
-            basis_type=config["basis_type"],
-            basis_order=config["basis_order"])
+            window_acceleration=config.get("Data","window_acceleration"), 
+            window_strain=config.get("Data","window_strain"), 
+            basis_type=config.get("Data","basis_type"),
+            basis_order=config.get("Data","basis_order"))
 
         temp_recon_strain, _ = data_processing.normalise_data(temp_recon_strain, pre_model.norm_factor)
 
@@ -306,7 +311,6 @@ def __(
     #source_strain = source_strain
     recon_velocities = np.gradient(recon_timeseries, axis=-1)
     source_velocities = np.gradient(source_timeseries, axis=-1)
-
     return (
         dyn_fn,
         i_f,
@@ -710,6 +714,12 @@ def __(
         time,
         tlim,
     )
+
+
+@app.cell
+def __():
+    #motion_fig.savefig("./figures/random_circular_reconstruct.pdf", bbox_inches="tight")
+    return
 
 
 @app.cell
