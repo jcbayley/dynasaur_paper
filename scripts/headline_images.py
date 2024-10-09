@@ -18,7 +18,6 @@ def __():
     import torch
     import massdynamics
     import json
-    import pandas as pd
     from massdynamics import create_model
     from massdynamics.data_generation import data_generation
     from scipy.interpolate import interp1d
@@ -40,7 +39,6 @@ def __():
         matplotlib,
         np,
         os,
-        pd,
         plt,
         scipy,
         torch,
@@ -80,7 +78,8 @@ def __(plt, rand_model):
 
 @app.cell
 def __(json, os):
-    root_dir="/Users/joebayley/projects/massdynamics_project/results/circular/test_2mass_timeseries32_2d_3det_nowindow_sr32_period1_2_transformer_1_masstriangle_unhanded"
+    #root_dir="/Users/joebayley/projects/massdynamics_project/results/circular/test_2mass_timeseries32_2d_3det_nowindow_sr32_period1_2_transformer_1_masstriangle_unhanded"
+    root_dir="/home/jf/projects/massdynamics/results/circular/test_2mass_timeseries32_2d_3det_nowindow_sr32_period1_2_transformer_1_masstriangle_unhanded"
     with open(os.path.join(root_dir, 'config.json'), 'r') as _f:
         config = json.load(_f)
     return config, root_dir
@@ -324,8 +323,8 @@ def __(
 
 
 @app.cell
-def __(fig_con):
-    fig_con.savefig("./figures/heatmap_output.pdf")
+def __():
+    #fig_con.savefig("./figures/heatmap_output.pdf")
     return
 
 

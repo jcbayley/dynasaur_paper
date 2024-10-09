@@ -106,19 +106,19 @@ def __(data_dir, h5py, interp1d, np, os):
     r_recon_velocities = np.gradient(r_recon_timeseries, axis=-1)
     r_source_velocities = np.gradient(r_source_timeseries, axis=-1)
 
-    _times = np.linspace(0, 1, np.shape(r_source_strain)[-1])
+    r_times = np.linspace(0, 1, np.shape(r_source_strain)[-1])
     interp_times = np.linspace(0, 1, 128)
-    strain_fn = interp1d(_times, r_source_strain, kind='cubic')
+    strain_fn = interp1d(r_times, r_source_strain, kind='cubic')
     source_strain = strain_fn(interp_times)
-    dyn_fn = interp1d(_times, r_source_timeseries, kind='cubic')
+    dyn_fn = interp1d(r_times, r_source_timeseries, kind='cubic')
     source_timeseries = dyn_fn(interp_times)
-    vel_fn = interp1d(_times, r_source_velocities, kind='cubic')
+    vel_fn = interp1d(r_times, r_source_velocities, kind='cubic')
     source_velocities = vel_fn(interp_times)
-    strain_fn = interp1d(_times, r_recon_strain, kind='cubic')
+    strain_fn = interp1d(r_times, r_recon_strain, kind='cubic')
     recon_strain = strain_fn(interp_times)
-    dyn_fn = interp1d(_times, r_recon_timeseries, kind='cubic')
+    dyn_fn = interp1d(r_times, r_recon_timeseries, kind='cubic')
     recon_timeseries = dyn_fn(interp_times)
-    vel_fn = interp1d(_times, r_recon_velocities, kind='cubic')
+    vel_fn = interp1d(r_times, r_recon_velocities, kind='cubic')
     recon_velocities = vel_fn(interp_times)
     return (
         data_files,
@@ -133,6 +133,7 @@ def __(data_dir, h5py, interp1d, np, os):
         r_source_strain,
         r_source_timeseries,
         r_source_velocities,
+        r_times,
         recon_masses,
         recon_strain,
         recon_timeseries,
@@ -262,7 +263,7 @@ def __(GridSpec, data_index, diff_angles, diff_radii, np, plt):
     ra_ax3.set_yticklabels([])
     ra_ax1.set_ylabel('Mass 1')
     ra_ax2.set_ylabel('Mass 2')
-    plt.show()
+    fig_ra_rmse
     return (
         fig_ra_rmse,
         gs_ra_rmse,
@@ -275,8 +276,9 @@ def __(GridSpec, data_index, diff_angles, diff_radii, np, plt):
 
 
 @app.cell
-def __():
-    #fig_ra_rmse.savefig("./figures/random_radius_anglediff.pdf", bbox_inches="tight")
+def __(fig_ra_rmse, save_plots):
+    if save_plots:
+        fig_ra_rmse.savefig("./figures/random_radius_anglediff.pdf", bbox_inches="tight")
     return
 
 
@@ -322,12 +324,22 @@ def __(np, plt, rmse):
 
 
 @app.cell
+def __(fig_rmse, save_plots):
+    if save_plots:
+        fig_rmse.savefig("./figures/random_strain_mse_dist.pdf", bbox_inches="tight")
+    return
+
+
+@app.cell
 def __(
     GridSpec,
     data_index,
     matplotlib,
     np,
     plt,
+    r_recon_strain,
+    r_source_strain,
+    r_times,
     recon_strain,
     recon_timeseries,
     recon_velocities,
@@ -342,7 +354,7 @@ def __(
     motion_detector = 0
     motion_fontsize = 20
     (_tstart, _tend) = (1, -1)
-    axlim = 0.5
+    axlim = 0.42
     #########
     # setup the grid
     #############
@@ -390,9 +402,17 @@ def __(
 
     # find and plot quantiles
     motion_qnts = np.quantile(np.array(recon_strain)[data_index, :,motion_detector], [0.1, 0.5, 0.9], axis=0)
+    r_motion_qnts = np.quantile(np.array(r_recon_strain)[data_index, :,motion_detector], [0.1, 0.5, 0.9], axis=0)
 
     motion_ax_l.plot(time, motion_qnts[1], color='C2', label='reconstructed 90% confidence')
     motion_ax_l.fill_between(time, motion_qnts[0], motion_qnts[2], alpha=0.5, color='C2')
+
+
+    # plot data points
+    motion_ax_l.plot(r_times, r_source_strain[data_index][motion_detector], color="k", marker="o", ms=3, ls="none", label="True datapoints")
+    #motion_ax_l.errorbar(r_times, r_motion_qnts[1], yerr=r_motion_qnts[2]- r_motion_qnts[0], color="C2", marker="o", ms=3, ls="none", label="Recon datapoints", capsize=3)
+    motion_ax_l.plot(r_times, r_motion_qnts[1], color="C2", marker="o", ms=3, ls="none", label="Recon datapoints")
+
 
     # residual plot
     motion_ax_ld.plot(time, motion_qnts[1] - source_strain[data_index][motion_detector], color='C2', label='recovered 90% confidence')
@@ -400,13 +420,19 @@ def __(
     motion_ax_ld.plot(time, source_strain[data_index][motion_detector] - source_strain[data_index][motion_detector], color='k', label='true')
     motion_ax_l.legend()
 
+    # plot residual data points
+    motion_ax_ld.plot(r_times, r_source_strain[data_index][motion_detector] - r_source_strain[data_index][motion_detector], color="k", marker="o", ms=3, ls="none", label="True datapoints")
+    #motion_ax_ld.errorbar(r_times, r_motion_qnts[1] - r_source_strain[data_index][motion_detector], yerr=r_motion_qnts[2]- r_motion_qnts[0], color="C2", marker="o", ms=3, ls="none", label="Recon datapoints", capsize=3)
+    motion_ax_ld.plot(r_times, r_motion_qnts[1] - r_source_strain[data_index][motion_detector], color="C2", marker="o", ms=3, ls="none", label="Recon datapoints")
+
+
     ###############
     # Plot the motion at all times
     ################
     motion_sinds = np.arange(recon_timeseries.shape[1])
     #motion_tsteps = np.random.choice(_sinds, 3)
 
-    motion_tsteps = np.array([88, 699])
+    motion_tsteps = np.array([84, 693])
     for _i in range(2):
         motion_tstep_time = motion_tsteps[_i] / len(source_strain[data_index][motion_detector])
         _width = 3 / 120
@@ -427,7 +453,7 @@ def __(
     ##############
     # Plot the motion at a single point in time
     ################
-    motion_tsteps = np.array(np.array([0.15, 0.4, 0.6]) * np.shape(recon_timeseries)[-1]).astype(int)
+    motion_tsteps = np.array(np.array([0.15, 0.48, 0.62]) * np.shape(recon_timeseries)[-1]).astype(int)
     nsamples = 30
     ar_scale = 2
     for _i in range(3):
@@ -456,8 +482,8 @@ def __(
         # Add arrows between sub plots
         figtr = motion_fig.transFigure.inverted()
         print(_tstep_time)
-        ptB = figtr.transform(motion_ax_ld.transData.transform((_tstep_time * 1.0 - 0.0, -0.005)))
-        ptE = figtr.transform(motion_axa[_i].transData.transform((0.0, 0.5)))
+        ptB = figtr.transform(motion_ax_ld.transData.transform((_tstep_time * 1.0 - 0.0, -0.022)))
+        ptE = figtr.transform(motion_axa[_i].transData.transform((0.0, axlim)))
         arrow = matplotlib.patches.FancyArrowPatch(ptB, ptE, transform=motion_fig.transFigure, fc='r', arrowstyle='simple', alpha=0.5, mutation_scale=20.0)
         motion_fig.patches.append(arrow)
 
@@ -506,6 +532,7 @@ def __(
         pos3,
         ptB,
         ptE,
+        r_motion_qnts,
         slim,
         time,
         tlim,
@@ -513,8 +540,9 @@ def __(
 
 
 @app.cell
-def __():
-    #motion_fig.savefig("./figures/random_reconstruct.pdf", bbox_inches="tight")
+def __(motion_fig, save_plots):
+    if save_plots:
+        motion_fig.savefig("./figures/random_reconstruct.pdf", bbox_inches="tight")
     return
 
 
